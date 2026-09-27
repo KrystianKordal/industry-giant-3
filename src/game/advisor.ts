@@ -81,6 +81,8 @@ export function analyse(ctx: GameContext, s: GameState): Tip[] {
   }
 
   // --- buildings
+  // full output buffers are common and often harmless — aggregate into one rare tip instead of one per building
+  const fullBuildings: typeof mine = [];
   for (const b of mine) {
     if (b.constructionProgress < 1) continue;
     const def = ctx.data.buildings[b.typeId];
@@ -99,7 +101,7 @@ export function analyse(ctx: GameContext, s: GameState): Tip[] {
         cooldown: 45,
       });
     } else if (b.status === 'outputFull') {
-      tips.push({ id: `full:${b.id}`, priority: 55, level: 'warning', title: 'Pełny magazyn', text: `${bname(ctx, b)} ma pełny magazyn wyjściowy — dodaj pojazd lub nową trasę odbioru.`, target: { kind: 'building', id: b.id }, cooldown: 45 });
+      fullBuildings.push(b);
     } else if (b.status === 'noWorkers') {
       tips.push({ id: `workers:${b.id}`, priority: 50, level: 'warning', title: 'Brak pracowników', text: `${bname(ctx, b)} nie ma pracowników — buduj bliżej miast albo podnieś płace.`, target: { kind: 'building', id: b.id }, cooldown: 60 });
     } else if (b.status === 'noCustomers') {
@@ -111,6 +113,13 @@ export function analyse(ctx: GameContext, s: GameState): Tip[] {
     if (!costCentre && ph.length === 3 && ph.every((v) => v < 0)) {
       tips.push({ id: `loss:${b.id}`, priority: 35, title: 'Budynek przynosi straty', text: `${bname(ctx, b)} od 3 miesięcy jest na minusie. Sprawdź zaopatrzenie i trasę albo rozważ rozbiórkę.`, target: { kind: 'building', id: b.id }, cooldown: 120 });
     }
+  }
+  if (fullBuildings.length) {
+    const first = fullBuildings[0]!;
+    const text = fullBuildings.length === 1
+      ? `${bname(ctx, first)} ma pełny magazyn wyjściowy — dodaj pojazd lub nową trasę odbioru.`
+      : `${fullBuildings.length} budynków ma pełne magazyny wyjściowe (m.in. ${bname(ctx, first)}) — dodaj pojazdy lub trasy odbioru.`;
+    tips.push({ id: 'full', priority: 55, level: 'warning', title: 'Pełny magazyn', text, target: { kind: 'building', id: first.id }, cooldown: 150 });
   }
 
   // --- vehicles & routes
