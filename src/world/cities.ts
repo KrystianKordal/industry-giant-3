@@ -560,7 +560,9 @@ export function updateCityMonthly(ctx: GameContext, state: GameState, city: City
   // Growth: satisfaction above the neutral point grows the city, below shrinks it (slower).
   const neutral = NEUTRAL_SATISFACTION[state.settings.difficulty] ?? 0.3;
   let g = (city.satisfaction - neutral) * 0.035;
-  if (g < 0) g *= 0.5;
+  // Decline is slower than growth, and slower still for small towns (villages don't empty out
+  // just because no company serves them yet — keeps 180-year games from depopulating the map).
+  if (g < 0) g *= 0.5 * clamp(pop / 5000, 0.3, 1);
   g *= 1 / (1 + pop / 400000);
   g *= eventModifier(state, 'growth', null, city.id);
   city.growthRate = Math.round(clamp(g, -0.02, 0.03) * 10000) / 10000;

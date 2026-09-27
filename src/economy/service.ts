@@ -63,6 +63,7 @@ function build(ctx: GameContext, companyId: CompanyId, typeId: string, x: number
   b.recipeId = firstOk ?? def.recipes[0] ?? null;
   const near = ctx.services.world.nearestCity(b.x + b.w / 2, b.y + b.h / 2, 40);
   b.cityId = near || 0;
+  b.name = hubName(ctx, companyId, def, near);
   addBuilding(state, b);
   // site: farms cultivate the land, other buildings clear trees
   const map = state.map;
@@ -78,6 +79,25 @@ function build(ctx: GameContext, companyId: CompanyId, typeId: string, x: number
   ctx.bus.emit('map:changed', { x: b.x, y: b.y, w: b.w, h: b.h });
   ctx.bus.emit('sfx', { id: 'build', x, y });
   return { ok: true, cost: chk.cost, id: b.id };
+}
+
+/**
+ * Stations, ports, warehouses and export centers are named after the nearest city
+ * ("Stacja kolejowa Brzozów", "Port Uniejów 2") so route names read like a timetable
+ * instead of "Stacja kolejowa → Stacja kolejowa". Other buildings keep the def name.
+ */
+function hubName(ctx: GameContext, companyId: CompanyId, def: BuildingDef, cityId: number): string | null {
+  if (def.category !== 'station' && def.category !== 'warehouse' && def.category !== 'export') return null;
+  const city = cityId ? ctx.state.cities[cityId] : undefined;
+  if (!city) return null;
+  const base = `${def.name} ${city.name}`;
+  const taken = new Set<string>();
+  for (const id in ctx.state.buildings) {
+    const o = ctx.state.buildings[id]!;
+    if (o.owner === companyId && o.name) taken.add(o.name);
+  }
+  if (!taken.has(base)) return base;
+  for (let k = 2; ; k++) if (!taken.has(`${base} ${k}`)) return `${base} ${k}`;
 }
 
 function demolish(ctx: GameContext, buildingId: BuildingId): ActionResult {

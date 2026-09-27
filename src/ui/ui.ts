@@ -279,7 +279,49 @@ export class UiManager implements UiApi {
     for (const w of [...openWindows]) w.close();
   }
 
+  /**
+   * Keep toasts from covering open windows: dodge windows docked on the right
+   * (inspector) by moving the stack left of them; next to a centred window the
+   * stack gets narrower so it covers as little of the window as possible.
+   */
+  private layoutToasts(): void {
+    const layer = this.toastLayer;
+    if (!layer.children.length) return;
+    const sc = uiScale();
+    const vw = window.innerWidth / sc;
+    const FULL = window.innerWidth <= 820 ? 260 : 320;
+    const MIN = 220;
+    const rects = [...openWindows].map((w) => {
+      const e = w.el;
+      return { l: e.offsetLeft, r: e.offsetLeft + e.offsetWidth, t: e.offsetTop, b: e.offsetTop + e.offsetHeight };
+    });
+    const top = layer.offsetTop;
+    const bottom = top + layer.offsetHeight;
+    const hits = (right: number, w: number): { l: number; r: number }[] =>
+      rects.filter((r) => r.r > vw - right - w && r.l < vw - right && r.b > top && r.t < bottom);
+    // 1) dodge windows docked on the right (inspector) by moving the stack left of them
+    let right = 12;
+    for (let k = 0; k < 3; k++) {
+      const hit = hits(right, FULL).filter((r) => r.r > vw - 40 && r.l > vw * 0.4);
+      if (!hit.length) break;
+      right = vw - Math.min(...hit.map((r) => r.l)) + 10;
+    }
+    if (vw - right - FULL < 8) right = 12;
+    // 2) a centred window reaching into the column: narrow the toasts to fit beside it
+    let width = FULL;
+    const over = hits(right, FULL);
+    if (over.length) {
+      const avail = vw - right - Math.max(...over.map((r) => r.r)) - 12;
+      width = Math.max(MIN, Math.min(FULL, avail));
+    }
+    const px = `${Math.round(right)}px`;
+    if (layer.style.right !== px) layer.style.right = px;
+    const wpx = `${Math.round(width)}px`;
+    if (layer.style.width !== wpx) layer.style.width = wpx;
+  }
+
   private tickPanels(): void {
+    this.layoutToasts();
     if (!this.ctx.hasGame) return;
     const now = performance.now();
     for (const inst of this.instances.values()) {
@@ -377,6 +419,7 @@ export class UiManager implements UiApi {
     });
     this.toastLayer.append(el);
     while (this.toastLayer.children.length > 5) this.toastLayer.firstElementChild?.remove();
+    this.layoutToasts();
     setTimeout(autoRemove, o.durationMs ?? (level === 'danger' ? 8000 : 5000));
   }
 }

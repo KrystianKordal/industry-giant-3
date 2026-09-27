@@ -43,6 +43,24 @@ export function resetProductionCaches(): void {
   pendingEmissions.clear();
 }
 
+/** Runtime caches as plain data (written into the save so a loaded game continues bit-identically). */
+export interface ProductionRuntimeDump {
+  site: [number, number, number, number][];
+  emissions: [number, number][];
+}
+
+export function dumpProductionCaches(): ProductionRuntimeDump {
+  const site: [number, number, number, number][] = [];
+  for (const [id, s] of siteCache) site.push([id, s.day, s.factor, s.quality]);
+  return { site, emissions: [...pendingEmissions.entries()] };
+}
+
+export function restoreProductionCaches(d: ProductionRuntimeDump | undefined): void {
+  if (!d || !Array.isArray(d.site) || !Array.isArray(d.emissions)) return;
+  for (const [id, day, factor, quality] of d.site) siteCache.set(id, { day, factor, quality });
+  for (const [id, e] of d.emissions) pendingEmissions.set(id, e);
+}
+
 const PRODUCER_CATEGORIES = new Set(['raw', 'factory', 'recycling', 'energy']);
 export const isProducer = (def: BuildingDef): boolean => PRODUCER_CATEGORIES.has(def.category);
 

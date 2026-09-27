@@ -45,12 +45,36 @@ function cityCenter(state: GameState): TilePos | null {
   return c ? { x: c.x, y: c.y } : null;
 }
 
-function nearPlayerBuilding(ctx: GameContext, state: GameState, productId: string): TilePos | null {
+const spotCache = new Map<string, TilePos | null>();
+
+/**
+ * Suggested spot for the next building of the chain: a third of the way from the
+ * supplier towards the city, snapped to the nearest tile where `typeId` can be built
+ * (the plain midpoint often lands inside the city on a street).
+ */
+function nearPlayerBuilding(ctx: GameContext, state: GameState, productId: string, typeId: string, frac = 0.3): TilePos | null {
   const b = playerBuildings(state).find((x) => produces(ctx, x, productId));
-  if (!b) return cityCenter(state);
   const c = cityCenter(state);
+  if (!b) return c;
   if (!c) return { x: b.x, y: b.y };
-  return { x: Math.round((b.x + c.x) / 2), y: Math.round((b.y + c.y) / 2) };
+  const px = Math.round(b.x + (c.x - b.x) * frac);
+  const py = Math.round(b.y + (c.y - b.y) * frac);
+  const key = `${b.id}:${typeId}:${px}:${py}`;
+  const hit = spotCache.get(key);
+  if (hit !== undefined && (!hit || state.map.building[hit.y * state.map.width + hit.x] === 0)) return hit ?? { x: px, y: py };
+  let best: TilePos | null = null;
+  for (let r = 0; r <= 8 && !best; r++)
+    for (let dy = -r; dy <= r && !best; dy++)
+      for (let dx = -r; dx <= r && !best; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        try {
+          if (ctx.services.economy.checkPlacement(state.playerCompanyId, typeId, px + dx, py + dy, 0).ok) best = { x: px + dx, y: py + dy };
+        } catch {
+          /* ignore */
+        }
+      }
+  spotCache.set(key, best);
+  return best ?? { x: px, y: py };
 }
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
@@ -68,53 +92,57 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'farm',
     title: 'Zbuduj farmę zboża',
-    text: 'Wybierz z paska budowy „Farma zboża” i postaw ją na żyznej równinie niedaleko miasta (zaznaczone pole to dobre miejsce).',
-    highlight: ['farm_grain', 'Farma'],
+    text: 'Kliknij „🌾 Surowce” na dolnym pasku, wybierz „Farma zboża” i postaw ją na żyznej równinie niedaleko miasta (pulsujący okrąg to dobre miejsce). Karta przy kursorze pokazuje koszt i żyzność gleby.',
+    highlight: ['build-raw', 'farm_grain'],
     target: (_c, s) => gameExt(s).tutorialTarget,
     done: (c, s) => hasProducer(c, s, 'grain'),
   },
   {
     id: 'mill',
     title: 'Postaw młyn',
-    text: 'Młyn zamieni zboże w mąkę. Postaw go między farmą a miastem — krótsze trasy to mniejsze koszty.',
-    highlight: ['mill', 'Młyn'],
-    target: (c, s) => nearPlayerBuilding(c, s, 'grain'),
+    text: 'Młyn zamieni zboże w mąkę. Otwórz „🏭 Fabryki”, wybierz „Młyn” i postaw go między farmą a miastem — krótsze trasy to mniejsze koszty.',
+    highlight: ['build-factory', 'mill'],
+    target: (c, s) => nearPlayerBuilding(c, s, 'grain', 'mill'),
     done: (c, s) => hasProducer(c, s, 'flour'),
   },
   {
     id: 'bakery',
     title: 'Postaw piekarnię',
-    text: 'Piekarnia wypieka chleb z mąki. Najlepiej blisko młyna i miasta.',
-    highlight: ['bakery', 'Piekarnia'],
-    target: (c, s) => nearPlayerBuilding(c, s, 'flour'),
+    text: 'Piekarnia wypieka chleb z mąki. W „🏭 Fabryki” wybierz „Piekarnia” i postaw ją blisko młyna i miasta.',
+    highlight: ['build-factory', 'bakery'],
+    target: (c, s) => nearPlayerBuilding(c, s, 'flour', 'bakery'),
     done: (c, s) => hasProducer(c, s, 'bread'),
   },
   {
     id: 'shop',
     title: 'Otwórz sklep w mieście',
-    text: 'Sklep spożywczy sprzedaje chleb mieszkańcom. Postaw go w mieście lub tuż przy nim.',
-    highlight: ['shop_food', 'Sklep'],
-    target: (_c, s) => cityCenter(s),
+    text: 'Sklep spożywczy sprzedaje chleb mieszkańcom. W „🏪 Handel” wybierz „Sklep spożywczy” i postaw go w mieście lub tuż przy nim (karta pokaże popyt i klientów w zasięgu).',
+    highlight: ['build-shop', 'shop_food'],
+    target: (c, s) => nearPlayerBuilding(c, s, 'bread', 'shop_food', 0.6),
     done: (c, s) => playerBuildings(s).some((b) => c.data.buildings[b.typeId]?.category === 'shop'),
   },
   {
     id: 'route',
     title: 'Połącz budynki',
-    text: 'Zbuduj drogi i utwórz trasy: farma → młyn → piekarnia → sklep. Możesz użyć auto-połączenia, które zbuduje drogę, trasę i kupi pojazd.',
-    highlight: ['road', 'route', 'autoConnect', 'Droga', 'Trasa'],
+    text: 'Połącz budynki: farma → młyn → piekarnia → sklep. Najprościej narzędziem „🔗 Auto-połącz” [K]: kliknij producenta, potem odbiorcę — droga, trasa i pojazd powstaną same. Powtórz dla każdej pary.',
+    highlight: ['logistics-autoconnect'],
+    target: (c, s) => {
+      const b = playerBuildings(s).find((x) => produces(c, x, 'flour')) ?? playerBuildings(s)[0];
+      return b ? { x: b.x, y: b.y } : cityCenter(s);
+    },
     done: (_c, s) => Object.values(s.routes).some((r) => r.owner === s.playerCompanyId),
   },
   {
     id: 'vehicle',
     title: 'Kup pojazd',
-    text: 'Trasa potrzebuje pojazdów. Kup wóz konny i przypisz go do trasy. Każde ogniwo łańcucha potrzebuje transportu.',
-    highlight: ['vehicles', 'buyVehicle', 'Pojazd'],
+    text: 'Trasa potrzebuje pojazdów. W oknie trasy wybierz pojazd (np. wóz konny) i kliknij „Kup”. Auto-połączenie kupuje pojazd samo. Każde ogniwo łańcucha potrzebuje transportu.',
+    highlight: ['logistics-autoconnect', 'Kup'],
     done: (_c, s) => Object.values(s.vehicles).some((v) => v.owner === s.playerCompanyId && v.routeId !== null),
   },
   {
     id: 'sale',
     title: 'Poczekaj na pierwszą sprzedaż',
-    text: 'Teraz łańcuch zaczyna oddychać: zboże rośnie, młyn miele, piekarnia piecze, a wozy kursują. Przyspiesz czas (2 lub 3) i obserwuj.',
+    text: 'Upewnij się, że cały łańcuch jest połączony (farma → młyn → piekarnia → sklep). Zboże rośnie, młyn miele, piekarnia piecze, a wozy kursują. Przyspiesz czas (klawisz 2 lub 3) i obserwuj — kliknij budynek, by zobaczyć, czego mu brakuje.',
     done: (_c, s) => (gameExt(s).sold.bread ?? 0) > 0 || Object.values(gameExt(s).sold).some((v) => v > 0),
   },
   {
@@ -197,7 +225,8 @@ function onStepEnter(ctx: GameContext, st: GameState): void {
   applyHighlights(step.highlight ?? []);
   const t = step.target?.(ctx, st);
   if (t) ctx.bus.emit('camera:focus', { x: t.x, y: t.y, zoom: 1.5 });
-  ctx.bus.emit('advisor:tip', { id: `tutorial:${step.id}`, text: step.text, target: t ? { kind: 'tile', x: t.x, y: t.y } : null });
+  // (no advisor bubble here — the tutorial panel already shows the step; a duplicate bubble is noise)
+  if (!ctx.headless && !ctx.ui.isPanelOpen('tutorial')) ctx.ui.openPanel('tutorial');
   ctx.ui.refreshPanel('tutorial');
 }
 

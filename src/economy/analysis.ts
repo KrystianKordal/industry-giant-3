@@ -29,6 +29,10 @@ export interface AnalysisOptions {
   companyId?: CompanyId;
   /** Road cost per producer→consumer link (default 1500 zł ≈ 25 tiles of dirt road). */
   roadCostPerLink?: number;
+  /** Price level multiplier applied to 'base' prices (e.g. PRICE_INDEX_BY_ERA[era]); default 1. */
+  priceIndex?: number;
+  /** Workforce multiplier (automation research, e.g. 0.8); default 1. */
+  workersMul?: number;
 }
 
 export interface BuildingEconomics {
@@ -89,7 +93,7 @@ export interface ChainPlan {
 // ---------------------------------------------------------------- helpers
 function priceOf(ctx: GameContext, p: ProductId, opts: AnalysisOptions): number {
   const base = ctx.data.products[p]?.basePrice ?? 0;
-  if (opts.prices === 'base') return base;
+  if (opts.prices === 'base') return base * (opts.priceIndex ?? 1);
   const st = ctx.tryState();
   const m = st?.market.products[p]?.price;
   return m !== undefined && Number.isFinite(m) && m > 0 ? m : base;
@@ -136,7 +140,7 @@ export function buildingEconomics(ctx: GameContext, typeId: string, recipeId?: s
     for (const io of r.byproducts ?? []) byproducts[io.product] = io.qty * cycles;
   }
   const upkeep = def.upkeep;
-  const wages = def.workers * wageOf(ctx, opts);
+  const wages = (def.workers > 0 ? Math.max(1, Math.round(def.workers * (opts.workersMul ?? 1))) : 0) * wageOf(ctx, opts);
   const energy = def.power && def.power < 0 ? -def.power * GRID_PRICE : 0;
   return {
     typeId,
@@ -251,7 +255,7 @@ export function planChain(ctx: GameContext, productId: ProductId, opts: Analysis
   if (shop && !isDigital) {
     buildings += 1;
     extraInv += shop.cost;
-    extraCost += shop.upkeep + shop.workers * wageOf(ctx, opts);
+    extraCost += shop.upkeep + (shop.workers > 0 ? Math.max(1, Math.round(shop.workers * (opts.workersMul ?? 1))) : 0) * wageOf(ctx, opts);
   }
   if (truck) {
     extraInv += links * (truck.cost + roadCost);

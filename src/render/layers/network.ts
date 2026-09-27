@@ -7,7 +7,7 @@
 import { CHUNK_SIZE, TILE_SIZE } from '../../core/constants';
 import type { GameContext } from '../../core/context';
 import { RailKind, RoadKind, Terrain, TileFlag, type GameState, type TileRect } from '../../core/types';
-import { addPts, deriveMask4, pieceOffset, piecesFor } from '../netGeom';
+import { addPts, deriveMask4, DIR_OFF, pieceOffset, piecesFor } from '../netGeom';
 import type { LayerDef, RenderContext } from '../types';
 
 const T = TILE_SIZE;
@@ -106,7 +106,22 @@ function buildChunk(state: GameState, cx: number, cy: number): NetChunk {
       if (rk) {
         const kind = Math.min(3, rk);
         c.hasRoad = true;
-        const m = roadMaskAt(state, i);
+        let m = roadMaskAt(state, i);
+        // Arms leading into a lower-class road are drawn in that road's style, so a paved
+        // junction on a dirt street does not leave a grey "pill" sticking into the dirt road.
+        if (kind > 1)
+          for (let d = 0; d < 4; d++) {
+            const bit = 1 << d;
+            if (!(m & bit)) continue;
+            const nx = x + DIR_OFF[d]![0];
+            const ny = y + DIR_OFF[d]![1];
+            if (nx < 0 || ny < 0 || nx >= W || ny >= map.height) continue;
+            const nk = Math.min(3, network.road[ny * W + nx]!);
+            if (nk > 0 && nk < kind) {
+              m &= ~bit;
+              addPts(c.road[nk]!, piecesFor(bit)[0]!.pts, x, y, T);
+            }
+          }
         const pieces = piecesFor(m);
         if (!pieces.length) {
           c.road[kind]!.moveTo((x + 0.5) * T, (y + 0.5) * T);

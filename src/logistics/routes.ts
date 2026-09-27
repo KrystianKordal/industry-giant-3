@@ -308,7 +308,11 @@ export function autoConnect(
   );
   if (!route) {
     const loadP: ProductId[] | 'all' = products.length ? products : 'all';
+    // "Ruda żelaza: Kopalnia rudy → Huta stali" (stations are named after cities, see economy build)
+    const pname = products.length === 1 ? (ctx.data.products[products[0]!]?.name ?? products[0]) : null;
+    const ends = `${buildingName(ctx, a)} → ${buildingName(ctx, b)}`;
     const spec: RouteSpec = {
+      name: pname ? `${pname}: ${ends}` : ends,
       mode,
       stops: [
         { buildingId: a.id, orders: [loadOrder(loadP)], waitFull: false, minLoad: 0 },
@@ -319,7 +323,7 @@ export function autoConnect(
     if (!cr.ok) return cr;
     route = state.routes[cr.id]!;
   }
-  const typeId = pickVehicleType(ctx, companyId, mode);
+  const typeId = pickVehicleType(ctx, companyId, mode, undefined, products);
   if (!typeId) return { ok: true, cost: spent, routeId: route.id, warning: 'Brak środków lub dostępnego pojazdu — trasa bez pojazdu' };
   const bv = buyVehicle(ctx, companyId, typeId, route.id, { depotId: a.id });
   if (!bv.ok) return { ok: true, cost: spent, routeId: route.id, warning: bv.reason };

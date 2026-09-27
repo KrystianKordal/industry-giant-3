@@ -21,6 +21,8 @@ import {
   PRICE_B,
   PRICE_MAX,
   PRICE_MIN,
+  PRICE_INDEX_BY_ERA,
+  PRICE_INDEX_SMOOTHING,
   PRICE_SMOOTHING,
 } from './constants';
 import { econExt } from './ext';
@@ -79,11 +81,30 @@ export function ensureMarket(state: GameState, ctx: GameContext): void {
   if (!Number.isFinite(m.economyFactor) || m.economyFactor <= 0) m.economyFactor = 1;
 }
 
+/**
+ * Book exported units for price statistics and export-price saturation. Used by
+ * logistics for deliveries to PUBLIC export buildings (the money is paid there,
+ * category 'export'); own export centers are booked by the sales system.
+ */
+export function recordExport(state: GameState, productId: string, qty: number): void {
+  if (!(qty > 0)) return;
+  const ext = econExt(state);
+  ext.exportMonth[productId] = (ext.exportMonth[productId] ?? 0) + qty;
+  const mp = state.market.products[productId];
+  if (mp) mp.current.sold += qty;
+}
+
 /** New-game step 'market': fresh market at base prices (seasonal), interest by difficulty. */
 export function marketNewGameStep(state: GameState, ctx: GameContext): void {
   state.market.products = {};
   ensureMarket(state, ctx);
-  state.market.priceIndex = 1;
+  // games starting in a later era start at that era's price level
+  const pi = PRICE_INDEX_BY_ERA[clamp(ctx.data.eraIndex(state.time.eraId), 0, PRICE_INDEX_BY_ERA.length - 1)]!;
+  state.market.priceIndex = pi;
+  for (const e of Object.values(state.market.products)) {
+    e.price = round2(e.price * pi);
+    e.exportPrice = round2(e.exportPrice * pi);
+  }
   state.market.economyFactor = 1;
   state.market.interestRate = INTEREST_RATE[state.settings.difficulty] ?? 0.07;
   econExt(state);
@@ -99,6 +120,10 @@ export function closeMarketMonth(state: GameState, ctx: GameContext): void {
   for (const c of Object.values(state.cities))
     for (const [p, d] of Object.entries(c.demand)) if (d.monthly > 0) cityDemand[p] = (cityDemand[p] ?? 0) + d.monthly;
   const month = state.time.month; // new month
+  // General price level drifts up with the era (slower than wages — see balance notes in constants.ts).
+  const eraIdx = clamp(ctx.data.eraIndex(state.time.eraId), 0, PRICE_INDEX_BY_ERA.length - 1);
+  const pi = PRICE_INDEX_BY_ERA[eraIdx]!;
+  m.priceIndex = Math.round((m.priceIndex + (pi - m.priceIndex) * PRICE_INDEX_SMOOTHING) * 10000) / 10000;
   // boom / recession: world events carry an `economy` multiplier
   m.economyFactor = Math.round(clamp(globalEventMod(state, 'economy'), 0.3, 3) * 1000) / 1000;
   for (const pd of ctx.data.productList()) {
@@ -111,9 +136,12 @@ export function closeMarketMonth(state: GameState, ctx: GameContext): void {
     const seasonal = seasonalOf(pd, month);
     const target = pd.basePrice * m.priceIndex * m.economyFactor * seasonal * scarcity * eventPriceMod(state, pd);
     const old = e.price;
-    let price = old + (target - old) * PRICE_SMOOTHING;
-    // seasonal swings apply immediately (not smoothed)
-    price *= seasonal / (e.seasonal || 1);
+    // Seasonal swings apply immediately (not smoothed): carry last month's price into the new
+    // season first, then close part of the gap to the (seasonal) target. (Applying the season
+    // ratio AFTER smoothing towards a seasonal target double-counted it and overshot, e.g.
+    // coal at 2× base every winter.)
+    const carried = old * (seasonal / (e.seasonal || 1));
+    let price = carried + (target - carried) * PRICE_SMOOTHING;
     if (!Number.isFinite(price) || price <= 0) price = pd.basePrice;
     price = clamp(price, pd.basePrice * 0.3, pd.basePrice * 3);
     e.price = round2(price);

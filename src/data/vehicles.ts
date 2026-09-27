@@ -18,10 +18,10 @@ export const VEHICLES: VehicleDef[] = [
   { id: 'truck_autonomous', name: 'Autonomiczna ciężarówka', icon: '🤖', mode: 'road', capacity: 100, speed: 17, cost: 45000, upkeep: 150, era: 'digital', requiresTech: 'robotics', lifespanYears: 15, emissions: 0, color: '#a0a0ff', description: 'Bez kierowcy: najniższe koszty utrzymania.' },
 
   // ======================================================== rail
-  { id: 'steam_train', name: 'Parowóz', icon: '🚂', mode: 'rail', capacity: 30, speed: 10, cost: 15000, upkeep: 350, era: 'industrial', requiresTech: 'railways', lifespanYears: 30, emissions: 0.5, wagons: { min: 1, max: 6, costPerWagon: 1500 }, color: '#303030' },
-  { id: 'diesel_train', name: 'Lokomotywa spalinowa', icon: '🚆', mode: 'rail', capacity: 50, speed: 16, cost: 40000, upkeep: 700, era: 'mass', requiresTech: 'diesel_engines', lifespanYears: 30, emissions: 0.4, wagons: { min: 2, max: 10, costPerWagon: 3000 }, color: '#c08030' },
-  { id: 'electric_train', name: 'Lokomotywa elektryczna', icon: '🚄', mode: 'rail', capacity: 60, speed: 22, cost: 70000, upkeep: 800, era: 'modern', lifespanYears: 30, emissions: 0.1, wagons: { min: 2, max: 12, costPerWagon: 4000 }, color: '#3060c0' },
-  { id: 'maglev_cargo', name: 'Pociąg towarowy dużych prędkości', icon: '🚅', mode: 'rail', capacity: 70, speed: 32, cost: 150000, upkeep: 1200, era: 'digital', requiresTech: 'robotics', lifespanYears: 30, emissions: 0, wagons: { min: 2, max: 12, costPerWagon: 6000 }, color: '#e0e0f0' },
+  { id: 'steam_train', name: 'Parowóz', icon: '🚂', mode: 'rail', capacity: 40, speed: 14, cost: 15000, upkeep: 350, era: 'industrial', requiresTech: 'railways', lifespanYears: 30, emissions: 0.5, wagons: { min: 1, max: 6, costPerWagon: 1500 }, color: '#303030' },
+  { id: 'diesel_train', name: 'Lokomotywa spalinowa', icon: '🚆', mode: 'rail', capacity: 60, speed: 20, cost: 40000, upkeep: 700, era: 'mass', requiresTech: 'diesel_engines', lifespanYears: 30, emissions: 0.4, wagons: { min: 2, max: 10, costPerWagon: 3000 }, color: '#c08030' },
+  { id: 'electric_train', name: 'Lokomotywa elektryczna', icon: '🚄', mode: 'rail', capacity: 70, speed: 28, cost: 70000, upkeep: 800, era: 'modern', lifespanYears: 30, emissions: 0.1, wagons: { min: 2, max: 12, costPerWagon: 4000 }, color: '#3060c0' },
+  { id: 'maglev_cargo', name: 'Pociąg towarowy dużych prędkości', icon: '🚅', mode: 'rail', capacity: 80, speed: 38, cost: 150000, upkeep: 1200, era: 'digital', requiresTech: 'robotics', lifespanYears: 30, emissions: 0, wagons: { min: 2, max: 12, costPerWagon: 6000 }, color: '#e0e0f0' },
 
   // ======================================================== water
   { id: 'sail_barge', name: 'Barka żaglowa', icon: '⛵', mode: 'water', capacity: 120, speed: 6, cost: 10000, upkeep: 220, era: 'industrial', lifespanYears: 25, emissions: 0, color: '#c0a070', description: 'Tania i pojemna, ale powolna.' },

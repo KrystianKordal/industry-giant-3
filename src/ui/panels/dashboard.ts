@@ -43,8 +43,8 @@ function delta(cur: number, prev: number | undefined, goodUp = true): { text: st
 // ---------------------------------------------------------------- overview
 function overview(el: HTMLElement, ctx: GameContext): () => void {
   const cards: Record<string, KpiHandle> = {
-    revenue: kpiCard('Przychody', '📈', 'Przychody operacyjne w bieżącym miesiącu (porównanie: poprzedni pełny miesiąc)'),
-    costs: kpiCard('Koszty', '📉', 'Koszty operacyjne w bieżącym miesiącu'),
+    revenue: kpiCard('Przychody', '📈', 'Przychody operacyjne ostatniego zamkniętego miesiąca (porównanie z miesiącem wcześniej; niżej: bieżący, niepełny miesiąc)'),
+    costs: kpiCard('Koszty', '📉', 'Koszty operacyjne ostatniego zamkniętego miesiąca (niżej: bieżący, niepełny miesiąc)'),
     profit: kpiCard('Zysk netto', '💰', 'Wynik ostatniego zamkniętego miesiąca (w nawiasie: bieżący)'),
     cashflow: kpiCard('Przepływ gotówki', '💸', 'Zmiana gotówki w ciągu ostatnich 30 dni (z kredytami i inwestycjami)'),
     value: kpiCard('Wartość firmy', '🏢', 'Wycena: majątek + gotówka − długi'),
@@ -65,8 +65,18 @@ function overview(el: HTMLElement, ctx: GameContext): () => void {
     const hist = f.history;
     const last = hist[hist.length - 1];
     const prev = hist[hist.length - 2];
-    cards.revenue!.set(formatMoney(f.current.revenue, true), delta(f.current.revenue, last?.revenue));
-    cards.costs!.set(formatMoney(f.current.expenses, true), delta(f.current.expenses, last?.expenses, false));
+    // Closed months are comparable; the running month is partial, so it is shown as a note only.
+    const withCurrent = (d: { text: string; tone: Tone } | null, cur: number): { text: string; tone: Tone } => ({
+      text: `${d ? `${d.text} · ` : ''}bieżący: ${formatMoney(cur, true)}`,
+      tone: d?.tone ?? 'dim',
+    });
+    if (last) {
+      cards.revenue!.set(formatMoney(last.revenue, true), withCurrent(delta(last.revenue, prev?.revenue), f.current.revenue));
+      cards.costs!.set(formatMoney(last.expenses, true), withCurrent(delta(last.expenses, prev?.expenses, false), f.current.expenses));
+    } else {
+      cards.revenue!.set(formatMoney(f.current.revenue, true), { text: 'bieżący miesiąc', tone: 'dim' });
+      cards.costs!.set(formatMoney(f.current.expenses, true), { text: 'bieżący miesiąc', tone: 'dim' });
+    }
     const lp = last?.profit ?? f.current.profit;
     cards.profit!.set(formatSignedMoney(lp, true), last ? { text: `bieżący: ${formatSignedMoney(f.current.profit, true)}${prev ? ` · poprz. ${formatSignedMoney(prev.profit, true)}` : ''}`, tone: f.current.profit >= 0 ? 'pos' : 'neg' } : null);
     const daily = ctx.state.stats.daily[`company.${p.id}.cash`] ?? [];
@@ -357,7 +367,7 @@ function loans(el: HTMLElement, ctx: GameContext): () => void {
   let amount = 50_000;
   let term = 36;
   const payEl = h('div', { class: 'ig-small ig-muted' });
-  const amountSlider = slider({ min: 10_000, max: 1_000_000, step: 10_000, value: amount, format: (v) => formatMoney(v, true) }, (v) => {
+  const amountSlider = slider({ min: 5_000, max: 1_000_000, step: 5_000, value: amount, format: (v) => formatMoney(v, true) }, (v) => {
     amount = v;
     updPay();
   });
@@ -401,7 +411,15 @@ function loans(el: HTMLElement, ctx: GameContext): () => void {
     const p = player(ctx);
     const debt = p.loans.reduce((a, l) => a + l.remaining, 0);
     const avail = Math.max(0, p.creditLimit - debt);
-    amountSlider.input.max = String(Math.max(10_000, Math.floor(avail / 10_000) * 10_000));
+    const maxAmount = Math.max(5_000, Math.floor(avail / 5_000) * 5_000);
+    amountSlider.input.max = String(maxAmount);
+    if (amount > maxAmount) {
+      // the credit limit shrank (valuation / reputation) — keep the requested amount within it
+      amount = maxAmount;
+      amountSlider.input.value = String(amount);
+      amountSlider.input.dispatchEvent(new Event('input'));
+    }
+    amountSlider.input.disabled = avail < 5_000;
     setChildren(
       info,
       h(

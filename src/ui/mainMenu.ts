@@ -246,7 +246,13 @@ export function installMainMenu(ctx: GameContext, ui: UiManager): void {
     menu.style.display = 'none';
   };
   ctx.bus.on('game:started', hide);
-  ctx.bus.on('game:ended', () => setTimeout(show, 0));
+  // Loading / starting a game while one is running emits game:ended → game:started
+  // synchronously; only show the menu if no game was started in the meantime.
+  ctx.bus.on('game:ended', () =>
+    setTimeout(() => {
+      if (!ctx.hasGame) show();
+    }, 0),
+  );
   show();
   // refresh "continue" / campaign availability after late registrations
   setTimeout(() => {

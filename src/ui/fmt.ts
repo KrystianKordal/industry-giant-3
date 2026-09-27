@@ -110,6 +110,11 @@ export const NOTIF_CATEGORY_LABEL: Record<string, string> = {
   research: 'Badania',
   goal: 'Cele',
   ai: 'Konkurencja',
+  advisor: 'Doradca',
+  disaster: 'Katastrofy',
+  political: 'Polityka',
+  ecology: 'Ekologia',
+  market: 'Rynek',
   system: 'System',
 };
 
@@ -221,6 +226,40 @@ const EFFECT_LABEL: Record<string, string> = {
   energy: 'energia',
   wages: 'płace',
   research: 'badania',
+  sales: 'sprzedaż',
+  perish: 'psucie',
+  interest: 'odsetki',
+  price: 'ceny',
+  demand: 'popyt',
+  reputation: 'reputacja',
+  loadRate: 'przeładunek',
+};
+
+const TARGET_LABEL: Record<string, string> = {
+  farm: 'farmy',
+  mine: 'kopalnie',
+  forestry: 'leśnictwo',
+  factory: 'fabryki',
+  food: 'żywność',
+  textile: 'tekstylia',
+  wood: 'drewno',
+  heavy: 'przemysł ciężki',
+  chemical: 'chemia',
+  electronics: 'elektronika',
+  digital: 'cyfrowe',
+  retail: 'handel',
+  shop: 'sklepy',
+  power: 'energetyka',
+  green: 'zielone',
+  recycling: 'recykling',
+  warehouse: 'magazyny',
+  vehicles: 'pojazdy',
+  infra: 'infrastruktura',
+  road: 'drogi',
+  rail: 'kolej',
+  water: 'statki',
+  air: 'drony',
+  raw: 'surowce',
 };
 
 /** "wydajność +50%, pracownicy +40%" from an effects map (multiplicative convention). */
@@ -229,7 +268,16 @@ export function effectsText(effects: Record<string, number>): string {
     .map(([k, v]) => {
       const [eff, target] = k.split('.');
       const pct = Math.round((v - 1) * 100);
-      return `${EFFECT_LABEL[eff ?? k] ?? eff}${target && target !== 'all' ? ` (${target})` : ''} ${pct >= 0 ? '+' : ''}${pct}%`;
+      return `${EFFECT_LABEL[eff ?? k] ?? eff}${target && target !== 'all' ? ` (${TARGET_LABEL[target] ?? target})` : ''} ${pct >= 0 ? '+' : ''}${pct}%`;
     })
     .join(', ');
+}
+
+/**
+ * Polish plural form: plural(n, 'budynek', 'budynki', 'budynków') → "1 budynek", "3 budynki", "5 budynków".
+ */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const a = Math.abs(Math.round(n));
+  const form = a === 1 ? one : a % 10 >= 2 && a % 10 <= 4 && (a % 100 < 12 || a % 100 > 14) ? few : many;
+  return `${formatNumber(a)} ${form}`;
 }

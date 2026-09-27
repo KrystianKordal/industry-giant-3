@@ -143,7 +143,10 @@ export function createBuildTool(ctx: GameContext): ToolDef {
       refresh();
       const cash = ctx.state.companies[player()]?.cash ?? 0;
       const lines: ToolStatusLine[] = [];
-      if (check) lines.push({ label: 'Koszt', value: formatMoney(check.cost), tone: check.cost > cash ? 'neg' : undefined });
+      if (check) {
+        const cost = check.ok ? check.cost : d.cost; // an invalid spot has no meaningful price
+        lines.push({ label: 'Koszt', value: formatMoney(cost), tone: cost > cash ? 'neg' : undefined });
+      }
       lines.push({ label: 'Utrzymanie', value: `${formatMoney(d.upkeep)}/mies.`, tone: 'dim' });
       if (d.workers) lines.push({ label: 'Pracownicy', value: String(d.workers), tone: 'dim' });
       if (analysis) lines.push(...analysis.lines);

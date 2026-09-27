@@ -20,10 +20,8 @@ import { rivalsPanel, takeoverPanel } from './panels';
 import { DIFFICULTY, PERSONALITIES, PERSONALITY_POOL, RIVAL_COLORS, RIVAL_LOGOS, RIVAL_NAMES } from './profiles';
 import { createAiService } from './takeover';
 
-/** Real-time budget (ms) for AI thinking per game day. */
-export const AI_BUDGET_MS = 8;
-
-const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+/** Max AI planner runs per game day (deterministic budget; one think ≈ 0.5–3 ms). */
+export const AI_MAX_THINKS_PER_DAY = 2;
 
 export interface RivalSpec {
   name?: string;
@@ -67,20 +65,26 @@ export function createRivals(state: GameState, options: NewGameOptions, ctx: Gam
       },
     });
     c.hq = home ? { x: home.x, y: home.y } : { x: Math.floor(state.map.width / 2), y: Math.floor(state.map.height / 2) };
+    const eff = DIFFICULTY[difficulty].efficiency;
+    if (eff !== 1) c.modifiers['efficiency.all'] = (c.modifiers['efficiency.all'] ?? 1) * eff;
     c.creditLimit = Math.round(cash * 0.8);
     ctx.bus.emit('company:created', { companyId: c.id });
   }
 }
 
-/** AI system: runs due companies within a real-time budget. */
+/**
+ * AI system: runs due companies, at most AI_MAX_THINKS_PER_DAY per game day (the rest
+ * thinks tomorrow). The cap is a COUNT, not wall-clock time, so the simulation stays
+ * deterministic (identical results after save → load, on fast and slow machines).
+ */
 export function aiSystem(state: GameState, _dt: number, ctx: GameContext): void {
-  const t0 = now();
   const today = state.time.totalDays;
+  let thinks = 0;
   for (const c of Object.values(state.companies)) {
     const ai = c.ai;
     if (!ai || c.isPlayer) continue;
     if (ai.nextThinkDay > today) continue;
-    if (now() - t0 > AI_BUDGET_MS) break; // the rest thinks tomorrow
+    if (thinks++ >= AI_MAX_THINKS_PER_DAY) break; // the rest thinks tomorrow
     const pers = PERSONALITIES[ai.personality] ?? PERSONALITIES.balanced;
     const diff = DIFFICULTY[ai.difficulty] ?? DIFFICULTY.normal;
     ai.nextThinkDay = today + Math.max(2, Math.round(diff.thinkDays * pers.tempo));

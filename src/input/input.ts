@@ -200,7 +200,17 @@ export class InputManager implements InputApi {
   // ------------------------------------------------------------ keyboard
   private onKeyDown(e: KeyboardEvent): void {
     const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
+    const typing =
+      !!target &&
+      ((target.tagName === 'INPUT' && !['range', 'checkbox', 'radio', 'button', 'color'].includes((target as HTMLInputElement).type)) ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable);
+    if (typing) {
+      // Esc leaves the text field and still closes the window / cancels the tool
+      if (e.key !== 'Escape') return;
+      target.blur();
+    }
     this.keys.add(e.code);
     if (e.key === 'Escape' && this.ctx.hasGame) {
       this.cancel(true);

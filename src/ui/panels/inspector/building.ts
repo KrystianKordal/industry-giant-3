@@ -124,6 +124,64 @@ export function connect(ctx: GameContext, fromId: number, toId: number, mode: Tr
   }
 }
 
+/** Status label; shops say "no goods" instead of "no raw materials". */
+export function statusInfo(ctx: GameContext, b: Building): { label: string; tone: 'pos' | 'warn' | 'neg' | 'dim'; icon: string } {
+  const s = BUILDING_STATUS[b.status] ?? { label: b.status, tone: 'dim' as const, icon: '•' };
+  const cat = ctx.data.buildings[b.typeId]?.category;
+  if (b.status === 'noInput' && (cat === 'shop' || cat === 'export')) return { ...s, label: 'Brak towaru', tone: 'warn' };
+  return s;
+}
+
+/** Plain-language reason why a building is not working (null = nothing to explain). */
+export function statusExplanation(ctx: GameContext, b: Building): string | null {
+  const st = ctx.state;
+  const def = ctx.data.buildings[b.typeId];
+  if (!def) return null;
+  const routes = Object.values(st.routes).filter((r) => r.owner === b.owner && r.stops.some((s) => s.buildingId === b.id));
+  const delivering = routes.filter((r) => r.stops.some((s, i) => s.buildingId === b.id && i > 0 && s.orders.some((o) => o.action === 'unload')));
+  const pname = (p: string): string => ctx.data.products[p]?.name ?? p;
+  if (!b.enabled || b.status === 'disabled') return 'Budynek wyłączony — kliknij „▶ Włącz”, aby wznowić pracę.';
+  switch (b.status) {
+    case 'construction':
+      return null;
+    case 'noInput': {
+      if (def.category === 'shop' || def.category === 'export') {
+        if (!routes.length) return 'Półki są puste. Połącz sklep z producentem towarów (przycisk „Połącz z…” poniżej albo narzędzie 🔗 Auto-połącz).';
+        return 'Towar wyprzedany — klienci kupują szybciej, niż dowozisz. Dodaj pojazdy do trasy lub zwiększ produkcję.';
+      }
+      const r = b.recipeId ? ctx.data.recipes[b.recipeId] : undefined;
+      const missing = (r?.inputs ?? []).filter((i) => (b.input[i.product]?.qty ?? 0) < i.qty).map((i) => pname(i.product));
+      const what = missing.length ? missing.join(', ') : 'surowców';
+      if (!delivering.length) return `Brak dostaw: ${what}. Zbuduj producenta i połącz go z tym budynkiem („Połącz z…” / 🔗 Auto-połącz).`;
+      return `Czeka na dostawę: ${what}. Trasa istnieje — jeśli przestoje się powtarzają, dodaj pojazdy albo zwiększ produkcję dostawcy.`;
+    }
+    case 'outputFull': {
+      const outs = Object.keys(b.output).filter((k) => (b.output[k]?.qty ?? 0) > 0).map(pname);
+      const what = outs.length ? outs.join(', ') : 'towary';
+      if (!routes.length) return `Magazyn pełny — nikt nie odbiera: ${what}. Połącz budynek z odbiorcą (fabryką, sklepem lub magazynem).`;
+      return `Magazyn pełny — pojazdy nie nadążają z odbiorem: ${what}. Dodaj pojazdy do trasy albo drugiego odbiorcę.`;
+    }
+    case 'noWorkers':
+      return `Za mało pracowników (${formatNumber(b.workers.employed)}/${formatNumber(b.workers.required)}). Budynek stoi za daleko od miasta albo miasto nie ma wolnych rąk — buduj bliżej większych miast.`;
+    case 'noDeposit':
+      return 'Brak złoża pod budynkiem albo złoże się wyczerpało. Stawiaj kopalnie na złożach (nakładka 🗺️ Złoża).';
+    case 'noCustomers':
+      return 'Brak klientów — sklep musi stać w zasięgu miasta, które ma popyt na jego towary.';
+    case 'noPower':
+      return 'Brak energii elektrycznej — zbuduj elektrownię albo zapewnij gotówkę na zakup prądu z sieci.';
+    case 'damaged':
+      return 'Budynek jest uszkodzony i nie pracuje. Napraw go przyciskiem 🔧 Napraw.';
+    case 'noPermit':
+      return 'Miasto cofnęło pozwolenie (zła opinia o firmie). Ogranicz zanieczyszczenia i zaopatruj miasto, by poprawić opinię.';
+    case 'ok':
+      if (b.efficiency < 0.6 && def.category !== 'shop')
+        return `Pracuje tylko na ${formatPercent(b.efficiency)} mocy — sprawdź załogę, stan techniczny${def.tags?.includes('farm') ? ', żyzność gleby i porę roku' : ''}.`;
+      return null;
+    default:
+      return null;
+  }
+}
+
 export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: number): void {
   const st = ctx.state;
   const b0 = st.buildings[id];
@@ -137,6 +195,7 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
 
   // ---------------------------------------------------------------- header
   const statusEl = h('span');
+  const whyEl = h('div', { class: 'ig-status-why' });
   const head = h(
     'div',
     { class: 'ig-insp-head' },
@@ -149,7 +208,7 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
     ),
     button('', () => focusTarget(ctx, { kind: 'building', id }, false), { icon: '📍', small: true, variant: 'ghost', title: 'Pokaż na mapie' }),
   );
-  p.body.append(head);
+  p.body.append(head, whyEl);
 
   const construction = progressBar(0, { color: 'linear-gradient(90deg,#6fa3d8,#9cc6ef)' });
   const constructionWrap = section('Budowa', construction.el);
@@ -251,7 +310,7 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
             { class: 'ig-demand-row' },
             h('span', null, productLabel(ctx, pid)),
             meter(dm.satisfaction, { color: goodColor(dm.satisfaction), width: 70, label: `Zaspokojenie popytu: ${formatPercent(dm.satisfaction)}` }),
-            h('span', { class: 'ig-small ig-muted' }, `${formatNumber(dm.monthly)}/mies. · ${formatMoney(dm.price)}`),
+            h('span', { class: 'ig-small ig-muted' }, `sprzedano ${formatNumber(b.stats.soldMonth[pid] ?? 0)} / popyt ${formatNumber(dm.monthly)} · ${formatMoney(dm.price)}`),
           ),
         );
       }
@@ -311,7 +370,9 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
       kv('Przychód (ten mies.)', formatMoney(s.revenueMonth), 'ig-pos'),
       kv('Koszty (ten mies.)', formatMoney(s.costMonth), 'ig-neg'),
       kv('Zysk (poprz. mies.)', last === undefined ? '—' : formatSignedMoney(last), last !== undefined && last < 0 ? 'ig-neg' : 'ig-pos'),
-      kv('Łącznie wyprodukowano', formatNumber(s.totalProduced)),
+      def?.category === 'shop' || def?.category === 'export'
+        ? kv('Łączny utarg', formatMoney(s.totalRevenue))
+        : kv('Łącznie wyprodukowano', formatNumber(s.totalProduced)),
     );
   });
   let chartAt = 0;
@@ -411,16 +472,22 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
       for (const u of ups) {
         const has = b.upgrades.includes(u.id);
         const effects = effectsText(u.effects);
+        const locked = !has && !!u.requiresTech && ctx.state.companies[b.owner]?.research.unlocked[u.requiresTech] === undefined;
+        const techName = u.requiresTech ? (ctx.data.techs[u.requiresTech]?.name ?? u.requiresTech) : '';
         el.append(
           h(
             'div',
             { class: 'ig-route-row' },
-            h('span', { class: 'ig-grow' }, has ? '✅ ' : '⬆️ ', u.name, h('span', { class: 'ig-muted ig-small' }, ` ${effects}`)),
-            has ? badge('zainstalowane', 'pos') : button(formatMoney(u.cost, true), () => doUpgrade(ctx, b, u.id), { small: true, title: `Kup ulepszenie: ${u.name}` }),
+            h('span', { class: 'ig-grow' }, has ? '✅ ' : locked ? '🔒 ' : '⬆️ ', u.name, h('span', { class: 'ig-muted ig-small' }, ` ${effects}`), locked ? h('div', { class: 'ig-muted ig-small' }, `Wymaga badania: ${techName}`) : null),
+            has
+              ? badge('zainstalowane', 'pos')
+              : locked
+                ? button('Badania', () => ctx.ui.openPanel('research'), { small: true, variant: 'ghost', title: `Najpierw zbadaj: ${techName}` })
+                : button(formatMoney(u.cost, true), () => doUpgrade(ctx, b, u.id), { small: true, title: `Kup ulepszenie: ${u.name}` }),
           ),
         );
       }
-    }, '', () => get()?.upgrades.join(',') ?? '');
+    }, '', () => `${get()?.upgrades.join(',') ?? ''}|${Object.keys(ctx.state.companies[b0.owner]?.research.unlocked ?? {}).length}`);
     if (ups.length) p.body.append(section('Ulepszenia', upgrades.el));
     p.onUpdate = chain(p.onUpdate, upgrades.update);
 
@@ -507,11 +574,14 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
       return;
     }
     p.setTitle(`${def?.icon ?? ''} ${b.name ?? def?.name ?? b.typeId}`);
-    const s = BUILDING_STATUS[b.status] ?? { label: b.status, tone: 'dim', icon: '•' };
+    const s = statusInfo(ctx, b);
+    const why = isMine ? statusExplanation(ctx, b) : null;
+    whyEl.style.display = why ? '' : 'none';
+    if (why && whyEl.textContent !== `💡 ${why}`) whyEl.textContent = `💡 ${why}`;
     statusEl.replaceChildren(badge(`${s.icon} ${s.label}`, s.tone === 'pos' ? 'pos' : s.tone === 'neg' ? 'neg' : s.tone === 'warn' ? 'warn' : 'dim'), b.enabled ? '' : badge('wyłączony', 'dim'));
     constructionWrap.style.display = b.constructionProgress < 1 ? '' : 'none';
     construction.set(b.constructionProgress, `Budowa ${formatPercent(b.constructionProgress)}`);
-    cycle.set(b.progress, b.status === 'ok' ? formatPercent(b.progress) : (BUILDING_STATUS[b.status]?.label ?? ''));
+    cycle.set(b.progress, b.status === 'ok' ? formatPercent(b.progress) : s.label);
     effMeter.replaceChildren(
       h('div', { class: 'ig-row ig-small' }, h('span', { class: 'ig-muted', style: { width: '70px' } }, 'Wydajność'), meter(Math.min(1, b.efficiency), { color: goodColor(b.efficiency), width: 140 }), h('span', null, formatPercent(b.efficiency))),
     );

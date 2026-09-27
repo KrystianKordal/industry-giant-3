@@ -148,6 +148,7 @@ export const encyclopediaPanel: PanelDef = {
       const d = ctx.data;
       const producing = d.recipesProducing(pd.id);
       const using = Object.values(d.recipes).filter((r) => r.inputs.some((i) => i.product === pd.id));
+      const byproductOf = Object.values(d.recipes).filter((r) => r.byproducts?.some((i) => i.product === pd.id));
       const sellers = d.buildingList().filter((b) => b.sells?.includes(pd.id));
       const st = ctx.tryState();
       const price = st?.market.products[pd.id]?.price;
@@ -168,7 +169,11 @@ export const encyclopediaPanel: PanelDef = {
         cons.length ? h('div', { class: 'ig-section-title' }, 'Konsumpcja w miastach (na 1000 mieszkańców / mies.)') : null,
         cons.length ? h('div', { class: 'ig-chips' }, cons.map(([k, v]) => badge(`${CLASS_LABEL[k as 'poor'] ?? k}: ${v}`, 'dim'))) : null,
         h('div', { class: 'ig-section-title' }, 'Jak powstaje'),
-        producing.length ? producing.map(recipeRow) : h('div', { class: 'ig-muted' }, 'Surowiec — wydobywany lub uprawiany.'),
+        producing.length
+          ? producing.map(recipeRow)
+          : byproductOf.length
+            ? [h('div', { class: 'ig-muted' }, 'Produkt uboczny powstający przy:'), ...byproductOf.map(recipeRow)]
+            : h('div', { class: 'ig-muted' }, 'Surowiec — wydobywany lub uprawiany.'),
         h('div', { class: 'ig-section-title' }, 'Łańcuch produkcji'),
         h('div', { class: 'ig-chain-tree' }, chainTree(pd.id)),
         h('div', { class: 'ig-section-title' }, 'Wykorzystanie'),
@@ -264,7 +269,16 @@ export const encyclopediaPanel: PanelDef = {
       detail.scrollTop = 0;
     };
 
-    if (!selected) selected = entries(ctx, kind).sort((a, b) => a.order - b.order)[0]?.id ?? '';
+    if (!selected) {
+      // start somewhere familiar (the first chain of the game), not on the cheapest waste product
+      const preferred = kind === 'product' ? ['bread', 'grain'].find((id) => ctx.data.products[id]) : undefined;
+      selected =
+        preferred ??
+        entries(ctx, kind)
+          .filter((e) => kind !== 'product' || !ctx.data.products[e.id]?.isWaste)
+          .sort((a, b) => a.order - b.order)[0]?.id ??
+        '';
+    }
     renderTabs();
     renderList();
     renderDetail();

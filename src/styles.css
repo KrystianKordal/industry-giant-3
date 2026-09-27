@@ -212,12 +212,12 @@ body.in-game .ig-toolbar {
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
   z-index: 40;
-  max-width: calc(100vw - 238px);
+  max-width: calc(100vw / var(--ui-scale) - 238px);
   overflow-x: auto;
 }
 body.ig-minimap-hidden .ig-toolbar {
   left: 64px;
-  max-width: calc(100vw - 76px);
+  max-width: calc(100vw / var(--ui-scale) - 76px);
 }
 .ig-toolbar-group {
   display: flex;
@@ -272,8 +272,8 @@ body.ig-minimap-hidden .ig-toolbar {
 .ig-window {
   position: absolute;
   min-width: 220px;
-  max-width: calc(100vw - 20px);
-  max-height: calc(100vh - var(--topbar-h) - var(--toolbar-h) - 50px);
+  max-width: calc(100vw / var(--ui-scale) - 20px);
+  max-height: calc(100vh / var(--ui-scale) - var(--topbar-h) - var(--toolbar-h) - 50px);
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -1194,7 +1194,7 @@ input[type='number'] {
   box-shadow: var(--shadow);
   backdrop-filter: blur(12px);
   padding: 10px 12px;
-  max-width: calc(100vw - 24px);
+  max-width: calc(100vw / var(--ui-scale) - 24px);
   animation: ig-fly-in 0.14s ease-out;
 }
 @keyframes ig-fly-in {
@@ -1229,8 +1229,8 @@ input[type='number'] {
   display: grid;
   grid-template-columns: repeat(auto-fill, 104px);
   gap: 6px;
-  max-width: min(760px, calc(100vw - 50px));
-  max-height: 46vh;
+  max-width: min(760px, calc(100vw / var(--ui-scale) - 50px));
+  max-height: calc(46vh / var(--ui-scale));
   overflow-y: auto;
   justify-content: center;
 }
@@ -1473,7 +1473,7 @@ body.in-game.ig-minimap-hidden .ig-minimap-show {
   box-shadow: var(--shadow);
   font-size: 12px;
   white-space: nowrap;
-  max-width: calc(100vw - 30px);
+  max-width: calc(100vw / var(--ui-scale) - 30px);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -1606,6 +1606,16 @@ body.ig-minimap-hidden .ig-advisor {
   gap: 10px;
   align-items: center;
   margin-bottom: 6px;
+}
+.ig-status-why {
+  margin: 0 0 8px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: rgba(232, 176, 74, 0.1);
+  border: 1px solid rgba(232, 176, 74, 0.28);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
 }
 .ig-insp-icon {
   font-size: 30px;
@@ -1925,7 +1935,7 @@ body.ig-minimap-hidden .ig-advisor {
 /* ---------------------------------------------------------------- chain view */
 .ig-chain-wrap {
   overflow: auto;
-  max-height: 62vh;
+  max-height: calc(62vh / var(--ui-scale));
   border-radius: var(--radius);
   background:
     radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0) 0 0 / 22px 22px,
@@ -2195,9 +2205,9 @@ kbd {
   width: auto;
 }
 .ig-newgame {
-  width: min(820px, calc(100vw - 30px));
+  width: min(820px, calc(100vw / var(--ui-scale) - 30px));
   text-align: left;
-  max-height: calc(100vh - 40px);
+  max-height: calc(100vh / var(--ui-scale) - 40px);
   overflow-y: auto;
 }
 .ig-ng-head {
@@ -2279,6 +2289,13 @@ kbd {
   gap: 4px;
   align-items: center;
 }
+.ig-settings .ig-field-check {
+  display: flex;
+  gap: 8px;
+}
+.ig-settings .ig-seg {
+  flex-wrap: nowrap;
+}
 
 /* ---------------------------------------------------------------- responsive */
 @media (max-width: 1500px) {
@@ -2325,7 +2342,7 @@ kbd {
   }
   .ig-toolbar {
     left: 160px;
-    max-width: calc(100vw - 172px);
+    max-width: calc(100vw / var(--ui-scale) - 172px);
   }
   .ig-advisor {
     bottom: 200px;
@@ -2349,7 +2366,7 @@ kbd {
     bottom: 230px;
   }
   .ig-build-grid {
-    max-height: 34vh;
+    max-height: calc(34vh / var(--ui-scale));
   }
 }
 @media (prefers-reduced-motion: reduce) {

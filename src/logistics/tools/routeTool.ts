@@ -13,7 +13,7 @@ import type { BuildingId, TransportMode } from '../../core/types';
 import type { ToolDef, ToolStatus } from '../../input/types';
 import { buildingName, stationModeOf, supportsMode } from '../access';
 import { MODE_ICONS, MODE_NAMES } from '../constants';
-import { defaultStops } from '../routes';
+import { defaultStops, tradableProducts } from '../routes';
 import { pickVehicleType } from '../vehicles';
 import { buildingCenter, fail, label, money, T, tileOf } from './common';
 
@@ -40,7 +40,9 @@ export function createRouteTool(ctx: GameContext): ToolDef {
       return;
     }
     const warning = (res as { warning?: string }).warning;
-    const typeId = pickVehicleType(ctx, player(), mode);
+    const a = ctx.state.buildings[stops[0]!];
+    const b = ctx.state.buildings[stops[1]!];
+    const typeId = pickVehicleType(ctx, player(), mode, undefined, a && b ? tradableProducts(ctx, a, b) : undefined);
     let text = warning ?? '';
     if (typeId) {
       const bv = ctx.services.logistics.buyVehicle(player(), typeId, res.id);
@@ -226,10 +228,14 @@ export function createAutoConnectTool(ctx: GameContext): ToolDef {
       if (!res.ok) fail(ctx, 'Auto-połączenie nieudane', res.reason);
       else {
         const warning = (res as { warning?: string }).warning;
+        const vid = (res as { vehicleId?: number }).vehicleId;
+        const v = vid ? ctx.state.vehicles[vid] : undefined;
+        const route = ctx.state.routes[res.routeId];
+        const bought = v ? `Kupiono: ${ctx.data.vehicles[v.typeId]?.name ?? v.typeId}${v.wagons ? ` (${v.wagons} wag.)` : ''}. ` : '';
         ctx.ui.toast({
           level: warning ? 'warning' : 'success',
-          title: 'Połączono',
-          text: `Koszt: ${money(res.cost)}${warning ? `. ${warning}` : ''}`,
+          title: `Połączono${route ? `: ${route.name}` : ''}`,
+          text: `${bought}Koszt łącznie (droga + pojazd): ${money(res.cost)}${warning ? `. ${warning}` : ''}`,
           target: { kind: 'route', id: res.routeId },
         });
         ctx.bus.emit('sfx', { id: 'success' });

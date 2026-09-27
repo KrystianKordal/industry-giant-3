@@ -14,6 +14,7 @@ import type { GameContext } from '../core/context';
 import { TileFlag, type Building, type GameState, type ProductId, type TileIndex, type TransportMode } from '../core/types';
 import type { BuildingDef, ProductCategory } from '../data/defs';
 import type { DataRegistry } from '../data/registry';
+import { buildingCapacity } from '../economy/stock';
 import { DEFAULT_CATCHMENT } from './constants';
 
 /** Transport mode a station building serves (null = not a station for rail/water/air). */
@@ -183,13 +184,17 @@ export function acceptSlot(ctx: GameContext, b: Building, p: ProductId, ignoreCo
   return null;
 }
 
-/** Free room for product p in building b (units). */
+/**
+ * Free room for product p in building b (units). Capacity comes from the economy's
+ * authoritative `buildingCapacity()` (def × upgrades × tech `capacity.*`), the same
+ * number production uses for its output limit; a hub's per-product limit overrides it.
+ */
 export function freeRoom(ctx: GameContext, b: Building, p: ProductId, slot: 'input' | 'storage'): number {
   const def = ctx.data.buildings[b.typeId];
   if (!def) return 0;
-  const cap = slot === 'storage' ? b.hub?.limits[p] || def.capacity : def.capacity;
+  const cap = (slot === 'storage' ? b.hub?.limits[p] : 0) || buildingCapacity(ctx, b, def);
   const cur = (slot === 'storage' ? b.storage : b.input)[p]?.qty ?? 0;
-  return Math.max(0, cap * Math.max(1, b.level) - cur);
+  return Math.max(0, cap - cur);
 }
 
 /** Products a building can hand out (output + hub storage above reserve). */

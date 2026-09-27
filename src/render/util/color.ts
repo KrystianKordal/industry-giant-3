@@ -8,7 +8,11 @@ export type RGB = [number, number, number];
 const parseCache = new Map<string, RGB>();
 
 /** Parse '#rgb', '#rrggbb', 'rgb(r,g,b)' / 'rgba(…)' into [r,g,b] (cached). Unknown → magenta. */
+const FALLBACK: RGB = [128, 128, 128];
+
 export function parseColor(c: string): RGB {
+  // defensive: a missing colour (bad mod data, undefined palette entry) must never throw in a draw loop
+  if (typeof c !== 'string' || !c) return FALLBACK;
   let v = parseCache.get(c);
   if (v) return v;
   v = [255, 0, 255];

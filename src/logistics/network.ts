@@ -126,8 +126,12 @@ export function checkTile(ctx: GameContext, companyId: CompanyId, kind: NetKind,
   if (cur >= level) return { ok: true, cost: 0, bridge, existing: true };
   if (map.flags[i]! & TileFlag.Blocked) return { ok: false, reason: 'Teren zablokowany', cost: 0, bridge, existing: false };
   if (map.building[i]) return { ok: false, reason: 'Na drodze stoi budynek', cost: 0, bridge, existing: false };
-  if (cur > 0 && net.owner[i] && net.owner[i] !== companyId)
+  if (cur > 0 && net.owner[i] && net.owner[i] !== companyId) {
+    // Another company's ROAD can be driven over and joined, just not upgraded: keep it as is
+    // (otherwise every connection crossing a rival's dirt road fails once paved roads unlock).
+    if (kind === 'road') return { ok: true, cost: 0, bridge, existing: true };
     return { ok: false, reason: 'Infrastruktura innej firmy', cost: 0, bridge, existing: false };
+  }
   const t = ctx.data.terrain[map.terrain[i]!];
   if (!bridge && t && !Number.isFinite(t.networkCost)) return { ok: false, reason: `Nie można budować na: ${t.name}`, cost: 0, bridge, existing: false };
   let cost = tileBaseCost(ctx, kind, level, i);
@@ -160,6 +164,7 @@ export function estimatePath(ctx: GameContext, companyId: CompanyId, kind: NetKi
   if (lvl < 1 || lvl > maxLevel(kind)) return fail('Nieznany poziom');
   if (!levelUnlocked(ctx, kind, lvl)) return fail(`${levelName(kind, lvl)}: niedostępne w tej epoce`);
   const W = ctx.state.map.width;
+  const built = kind === 'road' ? ctx.state.network.road : ctx.state.network.rail;
   let span = 0;
   for (let k = 0; k < tiles.length; k++) {
     const i = tiles[k]!;
@@ -168,7 +173,9 @@ export function estimatePath(ctx: GameContext, companyId: CompanyId, kind: NetKi
     if (!c.ok) fail(c.reason ?? 'Nie można budować');
     res.cost += c.cost;
     if (!c.existing) res.newTiles++;
-    if (c.bridge) {
+    // Straightness / span / land ends apply to NEW bridge tiles only: joining or upgrading an
+    // existing bridge (e.g. a city street over a river) is fine — the planner already allows it.
+    if (c.bridge && !built[i]) {
       res.bridgeTiles++;
       span++;
       if (span > MAX_BRIDGE_SPAN) fail(`Most zbyt długi (max ${MAX_BRIDGE_SPAN} pól)`);

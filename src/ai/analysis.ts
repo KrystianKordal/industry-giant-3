@@ -100,12 +100,17 @@ function buildingUsable(ctx: GameContext, companyId: CompanyId, b: BuildingDef, 
   return true;
 }
 
-/** Cheapest usable road vehicle (for cost/throughput estimates and purchases). */
-export function bestVehicle(ctx: GameContext, companyId: CompanyId, mode: 'road' | 'rail' | 'water' = 'road'): string | null {
+/**
+ * Most cost-effective usable vehicle of a mode (for cost/throughput estimates and purchases).
+ * With `productId`, only vehicles whose cargo classes can carry that product.
+ */
+export function bestVehicle(ctx: GameContext, companyId: CompanyId, mode: 'road' | 'rail' | 'water' = 'road', productId?: ProductId): string | null {
   let best: string | null = null;
   let bestScore = -Infinity;
+  const wc = productId ? ctx.data.products[productId]?.weightClass : undefined;
   for (const v of ctx.data.vehicleList()) {
     if (v.mode !== mode || !unlocked(ctx, companyId, 'vehicle', v.id)) continue;
+    if (wc && v.cargo && !v.cargo.includes(wc)) continue;
     // capacity × speed per zł of monthly upkeep+amortization
     const score = (v.capacity * Math.max(1, v.wagons?.min ?? 1) * v.speed) / (v.upkeep + v.cost / 60 + 1);
     if (score > bestScore) {
@@ -188,6 +193,11 @@ function subtreeCost(ctx: GameContext, n: ChainNode): number {
   let c = (ctx.data.buildings[n.buildingType]?.cost ?? 0) * n.count;
   for (const i of n.inputs) c += subtreeCost(ctx, i.node);
   return c;
+}
+
+/** Deep copy of a chain tree (balanceChain mutates counts). */
+export function cloneChain(n: ChainNode): ChainNode {
+  return { ...n, inputs: n.inputs.map((i) => ({ ...i, node: cloneChain(i.node) })) };
 }
 
 /** Visit every node (pre-order). */
@@ -289,11 +299,11 @@ export function estimateChain(
   companyId: CompanyId,
   productId: ProductId,
   city: City,
-  opts: { balance: boolean; maxBuildings: number },
+  opts: { balance: boolean; maxBuildings: number; /** Pre-built chain (cloned here; see pickProject). */ root?: ChainNode | null },
 ): ChainEstimate | null {
   const shop = shopsFor(ctx, companyId, productId)[0];
   if (!shop) return null;
-  const root = buildChain(ctx, companyId, productId);
+  const root = opts.root !== undefined ? (opts.root ? cloneChain(opts.root) : null) : buildChain(ctx, companyId, productId);
   if (!root) return null;
   balanceChain(root, opts.balance, opts.maxBuildings - 1);
   const nb = countBuildings(root);

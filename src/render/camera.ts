@@ -82,13 +82,25 @@ export class Camera {
     this.clamp();
   }
 
-  /** Keep the camera center inside the map. */
+  /**
+   * Keep the view over the map: at most a small margin (≈ 2 tiles + 4% of the
+   * view) of the void beyond the map edge may show. When the whole map fits on
+   * screen the camera is centred on it.
+   */
   clamp(): void {
     if (this.mapW <= 0 || this.mapH <= 0) return;
     const w = this.mapW * TILE_SIZE;
     const h = this.mapH * TILE_SIZE;
-    this.x = Math.min(w, Math.max(0, this.x));
-    this.y = Math.min(h, Math.max(0, this.y));
+    const axis = (c: number, size: number, view: number): number => {
+      const half = view / 2 / this.zoom;
+      const pad = 2 * TILE_SIZE + half * 0.08;
+      const lo = half - pad;
+      const hi = size - half + pad;
+      if (lo >= hi) return size / 2;
+      return Math.min(hi, Math.max(lo, c));
+    };
+    this.x = axis(this.x, w, this.viewW);
+    this.y = axis(this.y, h, this.viewH);
   }
 
   /** Like visibleTiles but writes into `out` (no allocation). */

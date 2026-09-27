@@ -87,7 +87,7 @@ export function createAtmosphereLayers(ctx: GameContext): LayerDef[] {
       let r = 255;
       let gg = 255;
       let b = 255;
-      const nk = night * 0.72;
+      const nk = night * (rc.ctx.renderer.overlay ? 0.35 : 0.56); // keep the map readable at night (esp. with overlays)
       r += (60 - r) * nk;
       gg += (80 - gg) * nk;
       b += (150 - b) * nk;

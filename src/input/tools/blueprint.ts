@@ -11,6 +11,7 @@ import { footprintSize, type PlaceCheck } from '../../core/entities';
 import { formatMoney } from '../../core/format';
 import type { Blueprint, BlueprintItem, GameState } from '../../core/types';
 import { promptDialog } from '../../ui/components';
+import { plural } from '../../ui/fmt';
 import type { ToolDef, ToolStatus } from '../types';
 
 const T = TILE_SIZE;
@@ -205,7 +206,7 @@ export function createBlueprintTool(ctx: GameContext): ToolDef {
         else netFail++;
       }
     }
-    if (netFail) errors.push(`Sieć: ${netFail} odcinków nie zbudowano`);
+    if (netFail) errors.push(`Sieć: nie zbudowano ${plural(netFail, 'odcinka', 'odcinków', 'odcinków')} (teren zajęty lub brak środków)`);
     ctx.ui.toast({
       level: errors.length ? (built ? 'warning' : 'danger') : 'success',
       icon: '📐',
@@ -268,7 +269,7 @@ export function createBlueprintTool(ctx: GameContext): ToolDef {
       const layer = ctx.ui.root;
       if (!layer) return;
       const n = Object.keys(st.blueprints).length + 1;
-      void promptDialog(layer, 'Zapisz blueprint', `${probe.items.length} budynków, ${probe.network.length} pól sieci (${probe.w}×${probe.h}). Nazwa:`, `Układ ${n}`, 'Zapisz').then((name) => {
+      void promptDialog(layer, 'Zapisz blueprint', `${plural(probe.items.length, 'budynek', 'budynki', 'budynków')}, ${plural(probe.network.length, 'pole', 'pola', 'pól')} sieci (${probe.w}×${probe.h}). Nazwa:`, `Układ ${n}`, 'Zapisz').then((name) => {
         if (!name || !ctx.hasGame) return;
         probe.name = name;
         ctx.state.blueprints[probe.id] = probe;

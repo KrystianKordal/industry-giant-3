@@ -20,10 +20,14 @@ export const GRID_PRICE = 60;
 /** Surplus electricity sold to the grid per MW per month. */
 export const GRID_SELL_PRICE = 30;
 
-/** Free research points per month every company gets (small "engineering office"). */
-export const BASE_RESEARCH_POINTS = 10;
-/** Research budget: zł per research point. */
-export const ZL_PER_RESEARCH_POINT = 40;
+/**
+ * Free research points per month every company gets (small "engineering office").
+ * Tuned so the first techs (120–180 pts) arrive in ~2–3 months with a design office
+ * (+40) or ~1 000 zł/month of budget, ~6 months with nothing at all (was 10 → 18 months).
+ */
+export const BASE_RESEARCH_POINTS = 25;
+/** Research budget: zł per research point (was 40). */
+export const ZL_PER_RESEARCH_POINT = 25;
 
 /** Upkeep paid by a disabled (switched off) building, as a fraction. */
 export const DISABLED_UPKEEP = 0.3;
@@ -58,6 +62,17 @@ export const INTEREST_RATE = { easy: 0.05, normal: 0.07, hard: 0.09 } as const;
 export const EXPORT_PRICE_SHARE = 0.72;
 /** Export price drop per unit exported last month relative to this volume (per product). */
 export const EXPORT_SATURATION_UNITS = 2000;
+
+/**
+ * General price level per era (market.priceIndex target; approached by
+ * PRICE_INDEX_SMOOTHING of the gap per month). Wages (world WAGE_BY_ERA =
+ * 55/80/130/220/340) rise ~6× over the game while prices only ~2× — labour gets
+ * relatively dearer, so automation research (automation_1 → industrial_robots →
+ * robotics, workers ×0.8 ×0.8 ×0.6) and newer products pay off. See the balance
+ * notes in economy/balance.ts.
+ */
+export const PRICE_INDEX_BY_ERA = [1, 1.18, 1.4, 1.7, 2] as const;
+export const PRICE_INDEX_SMOOTHING = 0.25;
 
 /** Market price response: target multiplier = clamp(PRICE_A − PRICE_B × supply/demand, MIN, MAX). */
 export const PRICE_A = 1.15;

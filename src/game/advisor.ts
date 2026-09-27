@@ -106,7 +106,9 @@ export function analyse(ctx: GameContext, s: GameState): Tip[] {
       tips.push({ id: `customers:${b.id}`, priority: 45, title: 'Sklep bez klientów', text: `${bname(ctx, b)} nie ma klientów — sklepy muszą stać w zasięgu miasta.`, target: { kind: 'building', id: b.id }, cooldown: 90 });
     }
     const ph = b.stats.profitHistory.slice(-3);
-    if (ph.length === 3 && ph.every((v) => v < 0)) {
+    // stations / warehouses / HQ / labs are cost centres by design — never suggest demolishing them
+    const costCentre = ['station', 'warehouse', 'research', 'hq', 'energy', 'export'].includes(def.category) || !!def.stationMode;
+    if (!costCentre && ph.length === 3 && ph.every((v) => v < 0)) {
       tips.push({ id: `loss:${b.id}`, priority: 35, title: 'Budynek przynosi straty', text: `${bname(ctx, b)} od 3 miesięcy jest na minusie. Sprawdź zaopatrzenie i trasę albo rozważ rozbiórkę.`, target: { kind: 'building', id: b.id }, cooldown: 120 });
     }
   }
@@ -194,7 +196,8 @@ export function advisorSystem(s: GameState, _dt: number, ctx: GameContext): void
   }
   queued = [];
   const fresh = tips.filter((t) => s.advisor.tipsShown[t.id] === undefined || today - s.advisor.tipsShown[t.id]! >= t.cooldown);
-  lastHint = (fresh[0] ?? tips[0])?.text ?? null;
+  // during the tutorial the tutorial panel is the only mentor (no periodic hint bubble)
+  lastHint = s.advisor.tutorialStep >= 0 ? null : ((fresh[0] ?? tips[0])?.text ?? null);
   if (!enabled(ctx, s)) return;
   // During the tutorial the tutorial panel is the mentor; only urgent tips.
   const tutorial = s.advisor.tutorialStep >= 0;

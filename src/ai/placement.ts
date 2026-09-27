@@ -169,3 +169,23 @@ export function rawAnchor(ctx: GameContext, typeId: string, x: number, y: number
   }
   return { x, y };
 }
+
+/**
+ * Up to `n` alternative anchors on free deposit tiles of a type, nearest to (x,y) first,
+ * at least 4 tiles apart (different parts of a field / other fields).
+ */
+export function depositAnchors(ctx: GameContext, depositType: string, x: number, y: number, n: number): TilePos[] {
+  const state = ctx.state;
+  const m = state.map;
+  const list = depositTiles(state, depositType)
+    .filter((t) => !m.building[t.y * m.width + t.x])
+    .map((t) => ({ t, d: (t.x - x) ** 2 + (t.y - y) ** 2 }))
+    .sort((a, b) => a.d - b.d);
+  const out: TilePos[] = [];
+  for (const { t } of list) {
+    if (out.some((o) => Math.abs(o.x - t.x) < 4 && Math.abs(o.y - t.y) < 4)) continue;
+    out.push(t);
+    if (out.length >= n) break;
+  }
+  return out;
+}

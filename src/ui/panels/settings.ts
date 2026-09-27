@@ -12,32 +12,41 @@ export const settingsPanel: PanelDef = {
   id: 'settings',
   title: 'Ustawienia',
   icon: '⚙️',
-  width: 380,
+  width: 430,
   refreshMs: 0,
   create(p, ctx) {
+    p.body.classList.add('ig-settings');
     const s = ctx.userSettings;
     const changed = (): void => {
       saveUserSettings(s);
       ctx.services.audio.applySettings();
       ctx.bus.emit('settings:changed', {});
     };
-    const slider = (key: NumKey, label: string, min: number, max: number, step: number): HTMLElement =>
-      h(
+    const slider = (key: NumKey, label: string, min: number, max: number, step: number, fmt: (v: number) => string = (v) => `${Math.round(v * 100)}%`): HTMLElement => {
+      const val = h('span', { class: 'ig-slider-value' }, fmt(s[key] as number));
+      return h(
         'label',
         { class: 'ig-field' },
         h('span', null, label),
-        h('input', {
-          type: 'range',
-          min,
-          max,
-          step,
-          value: String(s[key]),
-          oninput: (e: Event) => {
-            (s[key] as number) = Number((e.target as HTMLInputElement).value);
-            changed();
-          },
-        }),
+        h(
+          'div',
+          { class: 'ig-slider' },
+          h('input', {
+            type: 'range',
+            min,
+            max,
+            step,
+            value: String(s[key]),
+            oninput: (e: Event) => {
+              (s[key] as number) = Number((e.target as HTMLInputElement).value);
+              val.textContent = fmt(s[key] as number);
+              changed();
+            },
+          }),
+          val,
+        ),
       );
+    };
     const check = (key: BoolKey, label: string): HTMLElement =>
       h(
         'label',
@@ -73,7 +82,7 @@ export const settingsPanel: PanelDef = {
       h('label', { class: 'ig-field' }, h('span', null, 'Autozapis'), autosave),
       check('advisorEnabled', 'Podpowiedzi doradcy'),
       check('edgeScroll', 'Przewijanie krawędzią ekranu'),
-      slider('scrollSpeed', 'Szybkość przewijania', 0.3, 3, 0.1),
+      slider('scrollSpeed', 'Szybkość przewijania', 0.3, 3, 0.1, (v) => `×${v.toFixed(1)}`),
       h('div', { class: 'ig-section-title' }, 'Interfejs'),
       h(
         'div',

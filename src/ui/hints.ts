@@ -18,7 +18,12 @@ interface Tip {
   id: string;
   text: string;
   target: EntityRef | null;
+  /** Game day when the tip was raised (stale tips are dropped). */
+  day?: number;
 }
+
+/** Tips older than this (game days) are skipped / auto-dismissed — they may no longer be true. */
+const TIP_STALE_DAYS = 45;
 
 export function installHints(ctx: GameContext, ui: UiManager): void {
   const input = ctx.input instanceof InputManager ? ctx.input : null;
@@ -124,6 +129,8 @@ export function installHints(ctx: GameContext, ui: UiManager): void {
       bubble.style.display = 'none';
       return;
     }
+    const today = ctx.state.time.totalDays;
+    while (queue.length && today - (queue[0]!.day ?? today) > TIP_STALE_DAYS) queue.shift();
     current = queue.shift() ?? null;
     if (!current) {
       bubble.classList.add('ig-advisor-out');
@@ -173,6 +180,7 @@ export function installHints(ctx: GameContext, ui: UiManager): void {
   const push = (tip: Tip): void => {
     if (!ctx.userSettings.advisorEnabled) return;
     if (dismissed.has(tip.id) || current?.id === tip.id || queue.some((q) => q.id === tip.id)) return;
+    tip.day ??= ctx.tryState()?.time.totalDays;
     queue.push(tip);
     while (queue.length > 5) queue.shift();
     if (!current) show();
@@ -196,8 +204,15 @@ export function installHints(ctx: GameContext, ui: UiManager): void {
       push({ id: `hint:${hint}`, text: hint, target: null });
     }
   }, 5000);
+  // auto-dismiss a tip that has been on screen for a long (game) time
+  setInterval(() => {
+    const st = ctx.tryState();
+    if (!st || !current || current.day === undefined) return;
+    if (st.time.totalDays - current.day > TIP_STALE_DAYS) show();
+  }, 2000);
   ctx.bus.on('game:ended', () => {
     queue.length = 0;
+    dismissed.clear();
     current = null;
     lastHint = '';
     bubble.style.display = 'none';

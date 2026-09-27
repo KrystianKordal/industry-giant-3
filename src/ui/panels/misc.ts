@@ -8,7 +8,7 @@ import type { Notification } from '../../core/types';
 import { InputManager } from '../../input/input';
 import { button, chip, confirmDialog, emptyState, promptDialog } from '../components';
 import { h, setChildren } from '../dom';
-import { NOTIF_CATEGORY_LABEL } from '../fmt';
+import { NOTIF_CATEGORY_LABEL, plural } from '../fmt';
 import { focusTarget } from '../ui';
 import type { PanelDef } from '../types';
 
@@ -142,7 +142,7 @@ export const blueprintsPanel: PanelDef = {
                   'div',
                   { class: 'ig-grow' },
                   h('div', { class: 'ig-strong' }, bp.name),
-                  h('div', { class: 'ig-muted ig-small' }, `${icons} · ${bp.items.length} bud., ${bp.network.length} pól sieci · ${bp.w}×${bp.h} · ~${formatMoney(cost, true)}`),
+                  h('div', { class: 'ig-muted ig-small' }, `${icons} · ${bp.items.length} bud., ${plural(bp.network.length, 'pole', 'pola', 'pól')} sieci · ${bp.w}×${bp.h} · ~${formatMoney(cost, true)}`),
                 ),
                 button('Wklej', () => ctx.input.setTool('blueprint', { mode: 'paste', blueprintId: bp.id }), { small: true, variant: 'primary', icon: '📋' }),
                 button('', async () => {

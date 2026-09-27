@@ -17,7 +17,7 @@ import { createVehicleRecord } from '../core/entities';
 import { addMoney } from '../core/money';
 import { notify } from '../core/notify';
 import { rng } from '../core/rng';
-import type { BuildingId, CompanyId, GameState, Route, RouteId, TileIndex, Vehicle, VehicleId } from '../core/types';
+import type { BuildingId, CompanyId, GameState, ProductId, Route, RouteId, TileIndex, Vehicle, VehicleId } from '../core/types';
 import { clamp, getModifier, pushHistory, stockTotal } from '../core/util';
 import { accessTiles, buildingName, stationModeOf, supportsMode } from './access';
 import { loadAtStop, loadFraction, unloadAtStop } from './cargo';
@@ -116,19 +116,25 @@ export function baseSpeed(ctx: GameContext, v: Vehicle): number {
 
 /**
  * Weather × world-event speed factor at the vehicle (0 = blocked). Uses
- * ctx.services.world.modifierAt('speed.<mode>') (sampled every few ticks per
- * vehicle); falls back to a built-in weather table when the world reports 1.
+ * ctx.services.world.modifierAt('speed.<mode>'); falls back to a built-in weather
+ * table when the world reports 1. Cached per (day, mode, tile): weather and events
+ * only change on day ticks (before logistics runs), so the cache is a pure function
+ * of the state and a loaded save continues bit-identically.
  */
-const envCache = new WeakMap<GameState, Map<VehicleId, number>>();
+const envCache = new WeakMap<GameState, { day: number; map: Map<number, number> }>();
 export function envSpeed(ctx: GameContext, v: Vehicle): number {
   const state = ctx.state;
+  const day = state.time.totalDays;
   let cache = envCache.get(state);
-  if (!cache) envCache.set(state, (cache = new Map()));
-  const cached = cache.get(v.id);
-  if (cached !== undefined && (state.time.tick + v.id) % 5 !== 0) return cached;
+  if (!cache || cache.day !== day) envCache.set(state, (cache = { day, map: new Map() }));
+  const tx = Math.floor(v.x);
+  const ty = Math.floor(v.y);
+  const key = (ty * state.map.width + tx) * 4 + MODE_INDEX[v.mode];
+  const cached = cache.map.get(key);
+  if (cached !== undefined) return cached;
   let f = 1;
   try {
-    f = ctx.services.world.modifierAt(`speed.${v.mode}`, Math.floor(v.x), Math.floor(v.y));
+    f = ctx.services.world.modifierAt(`speed.${v.mode}`, tx, ty);
   } catch {
     f = 1;
   }
@@ -136,9 +142,11 @@ export function envSpeed(ctx: GameContext, v: Vehicle): number {
   if (f === 1) f = weatherSpeed(v.mode, weatherAt(state, v.x, v.y));
   if ((v.mode === 'water' || v.mode === 'air') && stormAt(state, v.x, v.y)) f = 0;
   f = Math.max(0, f);
-  cache.set(v.id, f);
+  cache.map.set(key, f);
   return f;
 }
+
+const MODE_INDEX: Record<Vehicle['mode'], number> = { road: 0, rail: 1, water: 2, air: 3 };
 
 /** Days to (un)load `moved` units; stations/hubs with def.loadRate (units/day) may be faster or slower. */
 function loadTime(ctx: GameContext, v: Vehicle, moved: number, buildingId: number): number {
@@ -245,8 +253,27 @@ function planLeg(ctx: GameContext, v: Vehicle, route: Route): boolean {
     return false;
   }
   const from = vehicleTile(state, v);
-  const p = findPathToBuilding(ctx, v.mode, from, b, true);
+  let p = findPathToBuilding(ctx, v.mode, from, b, true);
   if (p === undefined) return false; // budget exhausted → next tick
+  if (p === null && !enRoute(v)) {
+    // Parked at the previous stop: the vehicle may leave through any gate of that building
+    // (e.g. a building with access tiles on two separate road networks).
+    const prev = state.buildings[route.stops[(v.stopIndex - 1 + n) % n]!.buildingId];
+    const gates = prev && prev !== b ? accessTiles(ctx, prev, v.mode) : [];
+    if (gates.includes(from)) {
+      for (const g of gates) {
+        if (g === from) continue;
+        const q = findPathToBuilding(ctx, v.mode, g, b, false);
+        if (q) {
+          p = q;
+          const [gx, gy] = tileCenter(state.map.width, g);
+          v.x = v.prevX = gx;
+          v.y = v.prevY = gy;
+          break;
+        }
+      }
+    }
+  }
   if (p === null) {
     v.status = 'noPath';
     v.timer = NO_PATH_RETRY_DAYS;
@@ -486,11 +513,13 @@ export function vehicleDaily(state: GameState, _dt: number, ctx: GameContext): v
         repairs.set(v.owner, (repairs.get(v.owner) ?? 0) + repair);
         v.stats.costMonth += repair;
         ctx.bus.emit('vehicle:broken', { vehicleId: v.id });
-        notify(ctx, {
+        // Routine breakdowns are expected; only worn-out vehicles are worth a log entry
+        // (hundreds of 'Awaria' lines pushed real warnings out of the 200-entry log).
+        if (v.condition < 0.5) notify(ctx, {
           level: 'info',
           icon: '🔧',
           title: 'Awaria pojazdu',
-          text: `${v.name} zepsuł się i jest naprawiany.`,
+          text: `${v.name} zepsuł się i jest naprawiany. Pojazd jest mocno zużyty (${Math.round(v.condition * 100)}%) — rozważ wymianę.`,
           target: { kind: 'vehicle', id: v.id },
           companyId: v.owner,
           category: 'logistics',
@@ -556,8 +585,17 @@ export function vehiclePrice(ctx: GameContext, typeId: string, wagons?: number):
   const def = ctx.data.vehicles[typeId];
   if (!def) return Infinity;
   if (!def.wagons) return def.cost;
-  const w = clamp(Math.round(wagons ?? def.wagons.min), def.wagons.min, def.wagons.max);
+  const w = clamp(Math.round(wagons ?? defaultWagons(def)), def.wagons.min, def.wagons.max);
   return def.cost + w * def.wagons.costPerWagon;
+}
+
+/**
+ * Wagons a train gets when the buyer does not choose (auto-connect, AI, route tool):
+ * a mid-size consist (steam 4 → 160 units, diesel 6, electric 7). A 1-wagon train
+ * (30 units) was no better than two carts — trains must win long hauls.
+ */
+export function defaultWagons(def: { wagons?: { min: number; max: number } }): number {
+  return def.wagons ? Math.max(def.wagons.min, Math.ceil((def.wagons.min + def.wagons.max) / 2)) : 0;
 }
 
 /** Current resale value. */
@@ -601,7 +639,9 @@ export function buyVehicle(ctx: GameContext, companyId: CompanyId, typeId: strin
   if (routeId && !route) return { ok: false, reason: 'Nieznana trasa' };
   if (route && route.owner !== companyId) return { ok: false, reason: 'To trasa innej firmy' };
   if (route && route.mode !== def.mode) return { ok: false, reason: `Pojazd nie pasuje do trasy (transport ${MODE_NAMES[route.mode]})` };
-  const wagons = def.wagons ? clamp(Math.round(opts.wagons ?? def.wagons.min), def.wagons.min, def.wagons.max) : 0;
+  let wagons = def.wagons ? clamp(Math.round(opts.wagons ?? defaultWagons(def)), def.wagons.min, def.wagons.max) : 0;
+  // default consist: drop wagons (down to the minimum) until it is affordable
+  if (def.wagons && opts.wagons === undefined) while (wagons > def.wagons.min && vehiclePrice(ctx, typeId, wagons) > company.cash) wagons--;
   const cost = vehiclePrice(ctx, typeId, wagons);
   const spawn = spawnTile(ctx, companyId, def.mode, route, opts.depotId);
   if (!spawn) {
@@ -679,8 +719,13 @@ export function assignVehicle(ctx: GameContext, vehicleId: VehicleId, routeId: R
   return true;
 }
 
-/** Best unlocked vehicle type for a mode that the company can afford (by capacity×speed). */
-export function pickVehicleType(ctx: GameContext, companyId: CompanyId, mode: Vehicle['mode'], budget?: number): string | null {
+/**
+ * Best unlocked vehicle type for a mode that the company can afford (by capacity×speed).
+ * With `products`, vehicles whose cargo classes cannot carry them are skipped (or, when
+ * nothing carries all of them, scored by the share they can carry) — a steam wagon never
+ * gets a milk route and a tanker never gets a bread route.
+ */
+export function pickVehicleType(ctx: GameContext, companyId: CompanyId, mode: Vehicle['mode'], budget?: number, products?: readonly ProductId[]): string | null {
   const company = ctx.state.companies[companyId];
   if (!company) return null;
   const cash = budget ?? company.cash;
@@ -689,9 +734,19 @@ export function pickVehicleType(ctx: GameContext, companyId: CompanyId, mode: Ve
   for (const def of ctx.data.vehicleList()) {
     if (def.mode !== mode) continue;
     if (!ctx.services.economy.isUnlocked(companyId, 'vehicle', def.id)) continue;
-    if (vehiclePrice(ctx, def.id) > cash) continue;
-    const cap = def.wagons ? def.capacity * def.wagons.min : def.capacity;
-    const score = cap * def.speed;
+    if (vehiclePrice(ctx, def.id, def.wagons?.min) > cash) continue;
+    let share = 1;
+    if (products && products.length && def.cargo) {
+      let ok = 0;
+      for (const p of products) {
+        const w = ctx.data.products[p]?.weightClass;
+        if (w && def.cargo.includes(w)) ok++;
+      }
+      if (ok === 0) continue;
+      share = ok / products.length;
+    }
+    const cap = def.wagons ? def.capacity * defaultWagons(def) : def.capacity;
+    const score = cap * def.speed * (share < 1 ? share * 0.25 : 1);
     if (score > bestScore) {
       bestScore = score;
       best = def.id;

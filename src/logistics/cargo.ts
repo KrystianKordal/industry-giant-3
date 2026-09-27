@@ -14,6 +14,7 @@
  */
 import type { GameContext } from '../core/context';
 import { addMoney } from '../core/money';
+import { recordExport } from '../economy/market';
 import type { Building, ProductId, Route, Vehicle } from '../core/types';
 import { addStock, stockTotal, takeStock } from '../core/util';
 import { acceptSlot, availableProducts, catchment, freeRoom, isCompleted, stationModeOf } from './access';
@@ -114,6 +115,7 @@ function transferTo(ctx: GameContext, v: Vehicle, route: Route | null, t: Buildi
       value = n * ex;
       takeStock(v.cargo, p, n);
       addMoney(ctx, v.owner, value, 'export');
+      recordExport(state, p, n);
     } else {
       const buyer = state.companies[t.owner];
       if (!buyer || buyer.cash < value) return 0;
@@ -211,3 +213,46 @@ export function loadAtStop(ctx: GameContext, v: Vehicle, route: Route, stopIndex
 
 /** Fill ratio 0..1 of a vehicle. */
 export const loadFraction = (v: Vehicle): number => (v.capacity > 0 ? Math.min(1, stockTotal(v.cargo) / v.capacity) : 0);
+
+// ============================================================================
+// Station feeding (daily)
+// ============================================================================
+
+/**
+ * Rail/water/air stations hand goods waiting in their storage to OWN consumers in
+ * their catchment every day (factory inputs, shop stock), highest priority first,
+ * up to each consumer's free room and the station's daily loadRate. Without this,
+ * whatever arrived while a consumer was full stayed in the station forever (and the
+ * full storage then blocked the train). Goods above hub.reserve only.
+ */
+export function feedStations(ctx: GameContext): void {
+  const state = ctx.state;
+  for (const id in state.buildings) {
+    const st = state.buildings[id]!;
+    if (!st.hub || !isCompleted(st)) continue;
+    const def = ctx.data.buildings[st.typeId];
+    const mode = stationModeOf(def);
+    if (!mode || mode === 'road') continue;
+    let budget = def?.loadRate ?? 200;
+    let consumers: Building[] | null = null;
+    for (const p of Object.keys(st.storage)) {
+      if (budget <= 1e-6) break;
+      const e = st.storage[p]!;
+      let avail = e.qty - (st.hub.reserve[p] ?? 0);
+      if (avail <= 1e-6) continue;
+      consumers ??= catchment(ctx, st)
+        .filter((c) => isCompleted(c) && c.owner === st.owner)
+        .sort((a, b) => b.priority - a.priority || a.id - b.id);
+      for (const c of consumers) {
+        if (avail <= 1e-6 || budget <= 1e-6) break;
+        if (acceptSlot(ctx, c, p) !== 'input') continue;
+        const n = Math.min(avail, budget, freeRoom(ctx, c, p, 'input'));
+        if (n <= 1e-6) continue;
+        const t = takeStock(st.storage, p, n);
+        addStock(c.input, p, t.qty, t.quality);
+        avail -= t.qty;
+        budget -= t.qty;
+      }
+    }
+  }
+}

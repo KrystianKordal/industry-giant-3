@@ -2,6 +2,7 @@
  * Economy-private persistent data in state.ext.economy (plain data, saved).
  */
 import type { CompanyId, GameState, ProductId, TechId } from '../core/types';
+import type { ProductionRuntimeDump } from './production';
 
 export interface EconomyExt {
   /** Paused research progress per company/tech (restored when resumed). */
@@ -15,6 +16,8 @@ export interface EconomyExt {
   salesQ: Record<CompanyId, [number, number]>;
   /** Emission-cap baselines: regulation id → company id → baseline emissions/month. */
   capBaseline: Record<string, Record<CompanyId, number>>;
+  /** Runtime caches captured on game:beforeSave (site factors, pending emissions); consumed on load. */
+  runtime?: ProductionRuntimeDump;
   version: number;
 }
 

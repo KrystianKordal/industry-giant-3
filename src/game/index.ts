@@ -9,7 +9,9 @@
  *  - HUD item 'goals', toolbar buttons 'objectives' & 'advisor' (manage group)
  */
 import './game.css';
+import { TILE_SIZE } from '../core/constants';
 import type { GameContext } from '../core/context';
+import { cityPopulation } from '../core/entities';
 import { notify } from '../core/notify';
 import { saveUserSettings } from '../core/settings';
 import { SystemOrder } from '../core/sim';
@@ -53,6 +55,16 @@ export function init(ctx: GameContext): void {
   ctx.bus.on('game:ended', () => clearHighlights());
   ctx.bus.on('game:new', ({ state }) => {
     if (ctx.headless) return;
+    // Start the camera over the largest city (not the geometric map centre, often a lake).
+    let best: { x: number; y: number; pop: number } | null = null;
+    for (const c of Object.values(state.cities)) {
+      const pop = cityPopulation(c);
+      if (!best || pop > best.pop) best = { x: c.x, y: c.y, pop };
+    }
+    if (best) {
+      state.view.camX = (best.x + 0.5) * TILE_SIZE;
+      state.view.camY = (best.y + 0.5) * TILE_SIZE;
+    }
     const ext = gameExt(state);
     if (state.goals.scenarioId && !ext.briefed) {
       ext.briefed = true;

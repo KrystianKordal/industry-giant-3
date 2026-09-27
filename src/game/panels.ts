@@ -12,7 +12,7 @@ import type { PanelDef } from '../ui/types';
 import { isUnlocked, loadCampaign, nextScenarioId } from './campaign';
 import { currentScenario, updateObjectives } from './goals';
 import { milestoneList } from './milestones';
-import { formatProgress, objectiveRatio } from './objectives';
+import { formatProgress, objectiveRatio, type ObjectiveSpec } from './objectives';
 import { SCENARIOS, scenarioById, scenarioInfo, type ScenarioDef } from './scenarios';
 import { gameExt } from './tracking';
 import { advanceTutorial, currentStep, skipTutorial, TUTORIAL_STEPS } from './tutorial';
@@ -31,13 +31,28 @@ export function startScenario(ctx: GameContext, id: string): void {
   startNewGame(ctx, scenarioInfo(sc).options);
 }
 
-function objectiveRow(o: Objective, state: { time: { totalDays: number } } | null): HTMLElement {
+/** "🔒 requires research" note when the objective's product is not unlocked yet. */
+function lockNote(ctx: GameContext | undefined, o: Objective): HTMLElement | null {
+  if (!ctx || !o.productId || o.done || !ctx.hasGame) return null;
+  let unlocked = true;
+  try {
+    unlocked = ctx.services.economy.isUnlocked(ctx.state.playerCompanyId, 'product', o.productId);
+  } catch {
+    unlocked = true;
+  }
+  if (unlocked) return null;
+  const tech = ctx.data.products[o.productId]?.requiresTech;
+  const name = tech ? (ctx.data.techs[tech]?.name ?? tech) : null;
+  return h('div', { class: 'ig-small ig-warn' }, `🔒 ${name ? `Wymaga badania: ${name}` : 'Produkt dostępny w późniejszej epoce'} (🔬 Badania)`);
+}
+
+function objectiveRow(o: Objective, state: { time: { totalDays: number } } | null, ctx?: GameContext): HTMLElement {
   const bar = progressBar(objectiveRatio(o), { label: formatProgress(o), color: o.failed ? 'var(--danger)' : o.done ? 'var(--success)' : undefined });
   const status = o.done ? '✅' : o.failed ? '❌' : o.optional ? '⭐' : '🎯';
   let deadline = '';
   if (o.deadlineDay !== null && state && !o.done && !o.failed) {
     const left = o.deadlineDay - state.time.totalDays;
-    deadline = left > 360 ? `pozostało ${Math.floor(left / 360)} l. ${Math.floor((left % 360) / 30)} mies.` : `pozostało ${Math.max(0, Math.floor(left / 30))} mies.`;
+    deadline = left >= 360 ? `pozostało ${Math.floor(left / 360)} l. ${Math.floor((left % 360) / 30)} mies.` : `pozostało ${Math.max(0, Math.floor(left / 30))} mies.`;
   } else if (o.deadlineDay !== null && !state) {
     deadline = 'z terminem';
   }
@@ -46,6 +61,7 @@ function objectiveRow(o: Objective, state: { time: { totalDays: number } } | nul
     { class: `ig-goal${o.done ? ' done' : ''}${o.failed ? ' failed' : ''}` },
     h('div', { class: 'ig-row' }, h('span', null, status), h('span', { class: 'ig-grow ig-strong' }, o.title), o.optional ? h('span', { class: 'ig-small ig-muted' }, 'dodatkowy') : null),
     o.description ? h('div', { class: 'ig-small ig-muted' }, o.description) : null,
+    lockNote(ctx, o),
     bar.el,
     h(
       'div',
@@ -57,6 +73,19 @@ function objectiveRow(o: Objective, state: { time: { totalDays: number } } | nul
 }
 
 // ---------------------------------------------------------------- campaign
+/** Objective title for the briefing / campaign list (before the map exists). */
+function previewTitle(ctx: GameContext, o: ObjectiveSpec): string {
+  const pid = o.products?.find((p) => ctx.data.products[p]);
+  if (o.products && !pid && o.fallback) return o.fallback.title;
+  const pName = pid ? (ctx.data.products[pid]?.name ?? pid) : 'towar';
+  const tech = o.techs?.map((t) => ctx.data.techs[t]?.name).find(Boolean) ?? '';
+  return o.title
+    .replaceAll('{product}', pName)
+    .replace(/w mieście \{city\}/g, 'w największym mieście')
+    .replaceAll('{city}', 'wybranym mieście')
+    .replaceAll('{tech}', tech);
+}
+
 export const campaignPanel: PanelDef = {
   id: 'campaign',
   title: 'Kampania',
@@ -109,7 +138,7 @@ export const campaignPanel: PanelDef = {
           h(
             'ul',
             { class: 'ig-campaign-goals' },
-            s.objectives.map((o) => h('li', { class: o.optional ? 'ig-muted' : '' }, `${o.optional ? '⭐' : '🎯'} ${o.title.replace(/[:]? ?\{product\}/g, '').replace(/ ?\{city\}/g, '')}`)),
+            s.objectives.map((o) => h('li', { class: o.optional ? 'ig-muted' : '' }, `${o.optional ? '⭐' : '🎯'} ${previewTitle(ctx, o)}`)),
           ),
         ),
         done ? h('div', { class: 'ig-small ig-pos' }, `Ukończono w ${Math.round(done.days / 30)} mies. gry.`) : null,
@@ -147,7 +176,7 @@ export const briefingPanel: PanelDef = {
       p.body,
       h('div', { class: 'ig-small ig-muted' }, formatDate(st.time)),
       sc.intro.map((t) => h('p', { class: 'ig-campaign-intro' }, t)),
-      section('Cele', st.goals.objectives.map((o) => objectiveRow(o, null))),
+      section('Cele', st.goals.objectives.map((o) => objectiveRow(o, st, ctx))),
       h('div', { class: 'ig-row ig-row-end' }, button('Do dzieła!', go, { variant: 'primary', icon: '▶' })),
     );
     p.onClose = () => {
@@ -177,7 +206,7 @@ export const objectivesPanel: PanelDef = {
         p.body,
         sc ? h('div', { class: 'ig-strong' }, `${sc.icon} ${sc.name}`) : h('div', { class: 'ig-muted ig-small' }, 'Tryb swobodny — kamienie milowe pojawiają się same.'),
         st.goals.status !== 'playing' ? h('div', { class: st.goals.status === 'won' ? 'ig-pos' : 'ig-neg' }, st.goals.status === 'won' ? '🏆 Scenariusz wygrany' : '💀 Scenariusz przegrany') : null,
-        st.goals.objectives.length ? section('Cele scenariusza', st.goals.objectives.map((o) => objectiveRow(o, st))) : null,
+        st.goals.objectives.length ? section('Cele scenariusza', st.goals.objectives.map((o) => objectiveRow(o, st, ctx))) : null,
         section(
           `Kamienie milowe (${reached.length}/${ms.length})`,
           h(

@@ -165,15 +165,17 @@ export function findTilePath(ctx: GameContext, mode: TransportMode, from: TileIn
  * null when unreachable.
  */
 export function findPathToBuilding(ctx: GameContext, mode: TransportMode, from: TileIndex, b: Building, useBudget = false): TileIndex[] | null | undefined {
+  // The per-tick budget is charged BEFORE the cache lookup: whether a vehicle gets to plan
+  // this tick must not depend on the (runtime-only) cache, or a loaded save would diverge.
+  if (useBudget) {
+    const r = rt(ctx);
+    if (r.pathBudget <= 0) return undefined;
+    r.pathBudget--;
+  }
   const cache = cacheCheck(ctx);
   const key = `${mode}|${from}|${b.id}`;
   const hit = cache.get(key);
   if (hit !== undefined) return hit;
-  const r = rt(ctx);
-  if (useBudget) {
-    if (r.pathBudget <= 0) return undefined;
-    r.pathBudget--;
-  }
   const goals = accessTiles(ctx, b, mode);
   let p: TileIndex[] | null;
   if (!goals.length) p = null;

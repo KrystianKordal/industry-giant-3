@@ -72,12 +72,20 @@ export interface DifficultyDef {
   balanceChains: boolean;
   /** Max vehicles per link. */
   maxVehiclesPerLink: number;
+  /** One more simultaneous project allowed every N days since founding (expansion pace). */
+  growthDays: number;
+  /**
+   * Management efficiency of the rival's buildings (initial company modifier `efficiency.all`;
+   * research multiplies on top). Easy/normal rivals run their chains a bit worse than a
+   * careful human — see economy/balance.ts target 3.
+   */
+  efficiency: number;
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
-  easy: { thinkDays: 20, projects: 1, noise: 0.35, startCash: 0.7, maxChainBuildings: 6, balanceChains: false, maxVehiclesPerLink: 2 },
-  normal: { thinkDays: 12, projects: 2, noise: 0.15, startCash: 1, maxChainBuildings: 9, balanceChains: true, maxVehiclesPerLink: 3 },
-  hard: { thinkDays: 7, projects: 3, noise: 0.05, startCash: 1.25, maxChainBuildings: 12, balanceChains: true, maxVehiclesPerLink: 5 },
+  easy: { thinkDays: 20, projects: 1, noise: 0.35, startCash: 0.7, maxChainBuildings: 6, balanceChains: false, maxVehiclesPerLink: 2, growthDays: 1400, efficiency: 0.85 },
+  normal: { thinkDays: 12, projects: 2, noise: 0.15, startCash: 1, maxChainBuildings: 9, balanceChains: true, maxVehiclesPerLink: 3, growthDays: 1000, efficiency: 0.92 },
+  hard: { thinkDays: 7, projects: 3, noise: 0.05, startCash: 1.25, maxChainBuildings: 12, balanceChains: true, maxVehiclesPerLink: 5, growthDays: 540, efficiency: 1 },
 };
 
 export const RIVAL_NAMES: string[] = [

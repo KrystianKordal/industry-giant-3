@@ -23,6 +23,7 @@ import type { AIPlan, AIState, Building, City, Company, CompanyId, GameState, Ti
 import { dist, stockQty } from '../core/util';
 import {
   bestVehicle,
+  buildChain,
   citiesByOpportunity,
   consumerProducts,
   estimateChain,
@@ -30,7 +31,7 @@ import {
   type ChainEstimate,
   type ChainNode,
 } from './analysis';
-import { findSite, rawAnchor } from './placement';
+import { depositAnchors, findSite, rawAnchor } from './placement';
 import { DIFFICULTY, PERSONALITIES } from './profiles';
 
 export interface SpecEntry {
@@ -149,6 +150,8 @@ export function think(ctx: GameContext, company: Company): ThinkResult {
   }
   const r = aiRng(ai, company.id);
   try {
+    repairBuildings(ctx, company, res);
+    fixStuckVehicles(ctx, company, res);
     maintainPlans(ctx, company, res);
     manageFinances(ctx, company, res);
     manageResearch(ctx, company, res);
@@ -161,6 +164,59 @@ export function think(ctx: GameContext, company: Company): ThinkResult {
 }
 
 // ---------------------------------------------------------------- maintenance
+/** Repair buildings hit by disasters / old age (a damaged building below 25% stops completely). */
+function repairBuildings(ctx: GameContext, c: Company, res: ThinkResult): void {
+  const repair = ctx.services.economy.repairBuilding;
+  if (!repair) return;
+  const reserve = Math.max(2000, monthlyExpenses(c) * 0.5);
+  for (const b of companyBuildings(ctx.state, c.id)) {
+    if (b.condition >= 0.5 || b.constructionProgress < 1) continue;
+    const def = ctx.data.buildings[b.typeId];
+    const cost = (1 - b.condition) * (def?.cost ?? 0) * 0.35;
+    if (c.cash - cost < reserve) continue;
+    const r = safe(() => repair(b.id), { ok: false as const, reason: NI });
+    if (r.ok) res.actions++;
+  }
+}
+
+/**
+ * Vehicles that cannot reach their stop for 2+ months (road destroyed / building moved):
+ * sell them and mark the plan link as unlinked, so maintainPlans reconnects it (autoConnect
+ * rebuilds the missing road and reuses the route).
+ */
+function fixStuckVehicles(ctx: GameContext, c: Company, res: ThinkResult): void {
+  const state = ctx.state;
+  const m = mem(c.ai!);
+  const today = state.time.totalDays;
+  for (const v of Object.values(state.vehicles)) {
+    if (v.owner !== c.id) continue;
+    const key = `np:${v.id}`;
+    if (v.status !== 'noPath') {
+      if (m[key] !== undefined) delete m[key];
+      continue;
+    }
+    if (m[key] === undefined) {
+      m[key] = today;
+      continue;
+    }
+    if (today - num(m[key]) < 60) continue;
+    delete m[key];
+    const rid = v.routeId;
+    const r = safe(() => ctx.services.logistics.sellVehicle(v.id), { ok: false as const, reason: NI });
+    if (!r.ok) continue;
+    res.actions++;
+    for (const plan of c.ai!.plans) {
+      const routes = Array.isArray(plan.params.routes) ? (plan.params.routes as number[]) : [];
+      const linked = Array.isArray(plan.params.linked) ? (plan.params.linked as number[]) : [];
+      routes.forEach((id, i) => {
+        if (id && id === rid && i > 0) linked[i] = 0;
+      });
+    }
+  }
+  // forget vehicles that no longer exist
+  for (const k of Object.keys(m)) if (k.startsWith('np:') && !state.vehicles[Number(k.slice(3))]) delete m[k];
+}
+
 function maintainPlans(ctx: GameContext, c: Company, res: ThinkResult): void {
   const ai = c.ai!;
   const state = ctx.state;
@@ -188,11 +244,33 @@ function maintainPlans(ctx: GameContext, c: Company, res: ThinkResult): void {
         linked[i] = 0;
       }
     }
+    // depleted mines: tear down (with their route) — buildMissing relocates them to a fresh deposit
+    for (let i = 1; i < spec.length; i++) {
+      const b = ids[i] ? state.buildings[ids[i]!] : undefined;
+      if (!b || b.status !== 'noDeposit') continue;
+      const route = routes[i] ? state.routes[routes[i]!] : undefined;
+      if (route) {
+        for (const vid of [...route.vehicleIds]) safe(() => ctx.services.logistics.sellVehicle(vid), { ok: false as const, reason: NI });
+        safe(() => ctx.services.logistics.removeRoute(route.id), false);
+      }
+      safe(() => ctx.services.economy.demolish(b.id), { ok: false as const, reason: NI });
+      ids[i] = 0;
+      linked[i] = 0;
+      routes[i] = 0;
+      res.actions++;
+    }
     // (re)build missing entries if affordable
     if (ids.some((id) => !id)) {
       if (!buildMissing(ctx, c, plan, spec, ids, res)) {
         plan.params.tries = num(plan.params.tries) + 1;
         if (num(plan.params.tries) > 6 && ids.every((id) => !id)) plan.status = 'failed';
+        else if (num(plan.params.tries) > 10 && plan.status === 'pending') {
+          // Half-built chain that cannot be completed (no site / no deposit left): it would block
+          // every new project forever — scrap it and remember the pair as bad for a while.
+          abandonPlan(ctx, c, plan, ids, routes);
+          mem(ai)[`bad:${String(plan.params.product)}:${num(plan.params.city)}`] = state.time.totalDays;
+          continue;
+        }
       }
     }
     // recipes & shop price
@@ -219,7 +297,14 @@ function maintainPlans(ctx: GameContext, c: Company, res: ThinkResult): void {
         res.actions++;
       } else if (rr.reason === NI) {
         plan.params.logisticsMissing = true;
-      }
+      } else plan.params.linkFails = num(plan.params.linkFails) + 1;
+    }
+    // A chain whose links keep failing (no road possible, blocked terrain) would stay 'pending'
+    // forever and block every new project: scrap it (~4 months of retries).
+    if (plan.status === 'pending' && num(plan.params.linkFails) > 10) {
+      abandonPlan(ctx, c, plan, ids, routes);
+      mem(ai)[`bad:${String(plan.params.product)}:${num(plan.params.city)}`] = state.time.totalDays;
+      continue;
     }
     // capacity: add vehicles on congested producer outputs
     addVehicles(ctx, c, spec, ids, routes, res);
@@ -262,7 +347,7 @@ function buildMissing(ctx: GameContext, c: Company, plan: AIPlan, spec: SpecEntr
 }
 
 /** Compute sites for all missing entries (reserving space so they don't overlap). */
-function planSites(ctx: GameContext, c: Company, city: City, spec: SpecEntry[], ids: number[]): ({ x: number; y: number; rotation: 0 | 1 | 2 | 3 } | null)[] | null {
+export function planSites(ctx: GameContext, c: Company, city: City, spec: SpecEntry[], ids: number[]): ({ x: number; y: number; rotation: 0 | 1 | 2 | 3 } | null)[] | null {
   const state = ctx.state;
   const sites: ({ x: number; y: number; rotation: 0 | 1 | 2 | 3 } | null)[] = spec.map(() => null);
   const avoid: TileRect[] = [];
@@ -306,7 +391,17 @@ function planSites(ctx: GameContext, c: Company, city: City, spec: SpecEntry[], 
         findSite(ctx, c.id, e.t, a.x, a.y, { minR: 0, maxR: radius + 5, avoid, candidates: 1 }) ??
         findSite(ctx, c.id, e.t, a.x, a.y, { minR: 0, maxR: radius + 7, avoid, spacing: false, candidates: 1 });
     } else if (def.requiresDeposit) {
-      site = findSite(ctx, c.id, e.t, a.x, a.y, { minR: 0, maxR: 8, avoid, candidates: 3 });
+      // Try the anchor deposit, then other free deposit tiles nearby; relax the road corridor last.
+      const anchors = [a, ...depositAnchors(ctx, def.requiresDeposit, city.x, city.y, 5)];
+      for (const an of anchors) {
+        site = findSite(ctx, c.id, e.t, an.x, an.y, { minR: 0, maxR: 8, avoid, candidates: 3, maxChecks: 600 });
+        if (site) break;
+      }
+      if (!site)
+        for (const an of anchors) {
+          site = findSite(ctx, c.id, e.t, an.x, an.y, { minR: 0, maxR: 6, avoid, candidates: 2, spacing: false, maxChecks: 400 });
+          if (site) break;
+        }
     } else if (def.minFertility) {
       site = findSite(ctx, c.id, e.t, city.x, city.y, { minR: radius + 3, maxR: radius + 26, avoid, candidates: 6 });
     } else if (def.category === 'raw') {
@@ -407,7 +502,7 @@ function manualConnect(ctx: GameContext, c: Company, fromId: number, toId: numbe
     { ok: false as const, reason: NI },
   );
   if (!route.ok) return { ok: false, reason: route.reason };
-  const vid = bestVehicle(ctx, c.id, 'road');
+  const vid = bestVehicle(ctx, c.id, 'road', productId);
   if (vid) safe(() => L.buyVehicle(c.id, vid, route.id), { ok: false as const, reason: NI });
   return { ok: true, routeId: route.id };
 }
@@ -426,7 +521,10 @@ function addVehicles(ctx: GameContext, c: Company, spec: SpecEntry[], ids: numbe
     const vehicles = route.vehicleIds.length;
     if (vehicles >= diff.maxVehiclesPerLink) continue;
     if (vehicles > 0 && waiting < cap * 0.6) continue;
-    const vid = bestVehicle(ctx, c.id, route.mode === 'rail' ? 'rail' : route.mode === 'water' ? 'water' : 'road');
+    // more vehicles only help while the consumer still has room (otherwise they queue with full cargo)
+    const consumer = ids[spec[i]!.c] ? state.buildings[ids[spec[i]!.c]!] : undefined;
+    if (vehicles > 0 && consumer && stockQty(consumer.input, spec[i]!.p) > Math.max(1, ctx.data.buildings[consumer.typeId]?.capacity ?? 100) * 0.5) continue;
+    const vid = bestVehicle(ctx, c.id, route.mode === 'rail' ? 'rail' : route.mode === 'water' ? 'water' : 'road', spec[i]!.p);
     if (!vid) continue;
     const vcost = ctx.data.vehicles[vid]?.cost ?? Infinity;
     if (c.cash < vcost * 2) continue;
@@ -451,7 +549,13 @@ function evaluatePlanProfit(ctx: GameContext, c: Company, plan: AIPlan, spec: Sp
   if (months < 6) return;
   const threshold = -Math.max(3000, (num(plan.params.capital) || 20000) * 0.05);
   if (sum >= threshold) return;
-  // Close the chain: sell vehicles, remove routes, demolish buildings.
+  abandonPlan(ctx, c, plan, ids, routes);
+  void spec;
+}
+
+/** Close a chain: sell its vehicles, remove its routes, demolish its buildings, mark failed. */
+function abandonPlan(ctx: GameContext, c: Company, plan: AIPlan, ids: number[], routes: number[]): void {
+  const state = ctx.state;
   for (const rid of routes) {
     const route = rid ? state.routes[rid] : undefined;
     if (!route) continue;
@@ -464,7 +568,6 @@ function evaluatePlanProfit(ctx: GameContext, c: Company, plan: AIPlan, spec: Sp
     ids[i] = 0;
   }
   plan.status = 'failed';
-  void spec;
 }
 
 // ---------------------------------------------------------------- finances
@@ -580,7 +683,7 @@ function considerNewProject(ctx: GameContext, c: Company, r: Rng, res: ThinkResu
   const pers = PERSONALITIES[ai.personality];
   const diff = DIFFICULTY[ai.difficulty];
   if (busyProjects(ai) > 0) return; // finish what we started first
-  const maxProjects = Math.max(1, diff.projects + pers.extraProjects) + Math.floor((state.time.totalDays - c.foundedDay) / 720);
+  const maxProjects = Math.max(1, diff.projects + pers.extraProjects) + Math.floor((state.time.totalDays - c.foundedDay) / Math.max(90, diff.growthDays ?? 720));
   if (activeProjects(ai) >= maxProjects) return;
   // Don't expand while the company is losing money (except aggressive).
   const profit = recentProfit(c);
@@ -644,11 +747,14 @@ export function pickProject(ctx: GameContext, c: Company, r: Rng): ChainEstimate
   const existing = new Set(ai.plans.filter((p) => p.status !== 'failed').map((p) => `${p.params.product}:${p.params.city}`));
   for (const productId of products) {
     const cities = citiesByOpportunity(ctx, c.id, productId).slice(0, 4);
+    let root: ChainNode | null | undefined; // the production tree does not depend on the city: build once
     for (const { city } of cities) {
       if (existing.has(`${productId}:${city.id}`)) continue;
       const bad = num(mem(ai)[`bad:${productId}:${city.id}`], -1e9);
       if (state.time.totalDays - bad < 360) continue;
-      const est = estimateChain(ctx, c.id, productId, city, { balance: diff.balanceChains, maxBuildings: diff.maxChainBuildings + (pers.depthBias > 0.2 ? 2 : 0) });
+      if (root === undefined) root = buildChain(ctx, c.id, productId);
+      if (!root) break;
+      const est = estimateChain(ctx, c.id, productId, city, { balance: diff.balanceChains, maxBuildings: diff.maxChainBuildings + (pers.depthBias > 0.2 ? 2 : 0), root });
       if (!est || est.profit <= 0) continue;
       const roi = est.roi;
       if (roi < pers.minRoi) continue;

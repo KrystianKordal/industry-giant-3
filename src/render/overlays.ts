@@ -190,7 +190,7 @@ export class OverlayManager {
       id: 'demand',
       name: 'Popyt',
       icon: '🛒',
-      description: 'Niezaspokojony popyt w miastach (jednostki / miesiąc). Użyj „demand:<produkt>” dla jednego towaru.',
+      description: 'Niezaspokojony popyt w miastach (jednostki / miesiąc). Wybierz towar w legendzie, aby zobaczyć popyt na jeden produkt.',
       unit: 'jedn./mies.',
       minLabel: 'zaspokojony',
       maxLabel: 'duży niedobór',

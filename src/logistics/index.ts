@@ -11,6 +11,7 @@
  */
 import type { GameContext } from '../core/context';
 import { SystemOrder } from '../core/sim';
+import { feedStations } from './cargo';
 import { chargeInfraUpkeep, neighbor, rebuildRoadConn, updateRoadConn } from './network';
 import { onBuildingRemoved } from './routes';
 import { dropRuntime, invalidatePaths, rt } from './runtime';
@@ -24,7 +25,15 @@ export function init(ctx: GameContext): void {
   ctx.services.logistics = createLogisticsService(ctx);
 
   ctx.sim.registerSystem('logistics', SystemOrder.logistics, vehicleTick);
-  ctx.sim.registerSystem('logistics.daily', SystemOrder.logistics + 1, vehicleDaily, { period: 'day' });
+  ctx.sim.registerSystem(
+    'logistics.daily',
+    SystemOrder.logistics + 1,
+    (state, dt, c) => {
+      vehicleDaily(state, dt, c);
+      feedStations(c);
+    },
+    { period: 'day' },
+  );
   ctx.sim.registerSystem(
     'logistics.monthly',
     SystemOrder.logistics + 2,
