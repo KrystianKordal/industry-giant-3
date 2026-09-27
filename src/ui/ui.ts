@@ -128,6 +128,17 @@ function placeWindow(layer: HTMLElement, el: HTMLElement, pos: NonNullable<Panel
   el.style.top = `${Math.max(48, y)}px`;
 }
 
+/** Move a window up/left so it fits in the layer (after its content grew). */
+export function fitWindow(layer: HTMLElement, el: HTMLElement): void {
+  const lw = layer.clientWidth || window.innerWidth;
+  const lh = layer.clientHeight || window.innerHeight;
+  const top = el.offsetTop;
+  const left = el.offsetLeft;
+  const maxBottom = lh - 84; // keep clear of the bottom toolbar
+  if (top + el.offsetHeight > maxBottom) el.style.top = `${Math.max(48, maxBottom - el.offsetHeight)}px`;
+  if (left + el.offsetWidth > lw - 6) el.style.left = `${Math.max(0, lw - 6 - el.offsetWidth)}px`;
+}
+
 // ============================================================================
 // Manager
 // ============================================================================
@@ -227,6 +238,10 @@ export class UiManager implements UiApi {
       console.error(`[ui] panel "${id}" create failed`, err);
       win.body.append(h('div', { class: 'ig-error' }, `Błąd panelu: ${String(err)}`));
     }
+    // content is built after placement → keep the grown window inside the viewport
+    const fit = (): void => fitWindow(this.windowLayer, win.el);
+    fit();
+    requestAnimationFrame(fit);
     this.ctx.bus.emit('panel:opened', { id: key });
     this.ctx.bus.emit('sfx', { id: 'open' });
   }
@@ -312,6 +327,15 @@ export class UiManager implements UiApi {
     const sc = Math.max(0.7, Math.min(1.6, this.ctx.userSettings.uiScale || 1));
     this.root.style.zoom = String(sc);
     document.documentElement.style.setProperty('--ui-scale', String(sc));
+  }
+
+  /** Remove visible toasts whose title or text equals `text` (dedupe advisor tips). */
+  dismissToastsMatching(text: string): void {
+    for (const el of [...this.toastLayer.children]) {
+      const t = el.querySelector('.ig-toast-text')?.textContent ?? '';
+      const ti = el.querySelector('.ig-toast-title')?.textContent ?? '';
+      if (t === text || ti === text) el.remove();
+    }
   }
 
   /** All open panel instances (read-only view). */

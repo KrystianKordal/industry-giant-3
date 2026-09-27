@@ -40,21 +40,6 @@ const smoothstep = (a: number, b: number, v: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** Runtime by-products of mapgen other steps may reuse (not stored in state). */
-export interface MapgenExtras {
-  /** 0..1 warmth per tile. */
-  warmth: Float32Array;
-  /** 0..1 moisture per tile. */
-  moisture: Float32Array;
-  ocean: Uint8Array;
-}
-
-let lastExtras: { seed: number; extras: MapgenExtras } | null = null;
-/** Extras of the most recent generateMap call for this seed (null otherwise). */
-export function mapgenExtras(seed: number): MapgenExtras | null {
-  return lastExtras && lastExtras.seed === seed ? lastExtras.extras : null;
-}
-
 /** Pick the dominant map climate from the seed. */
 export function pickClimate(seed: number): ClimateZone {
   const v = hash01(hashSeed(seed, 'climate'));
@@ -313,8 +298,6 @@ export function generateMap(state: GameState, options: NewGameOptions, data: Dat
   // ------------------------------------------------------------ 9. deposits
   placeDeposits(map, data, options);
 
-  lastExtras = { seed, extras: { warmth, moisture, ocean } };
-  void filled;
 }
 
 // ============================================================================

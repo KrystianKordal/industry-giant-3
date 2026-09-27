@@ -1,12 +1,24 @@
 /**
  * Canvas 2D renderer: requestAnimationFrame loop independent from the sim,
- * layer registry (sorted by z), camera, dirty-rect invalidation.
+ * layer registry (sorted by z), camera, dirty-rect invalidation, overlays,
+ * effects, frame statistics. The loop redraws every frame, so no explicit
+ * "request redraw" is needed — cached layers only need `invalidate(rect)`
+ * (done automatically on map:changed / network:changed).
  */
 import { TILE_SIZE } from '../core/constants';
 import type { GameContext, RendererApi } from '../core/context';
 import type { TileRect } from '../core/types';
 import { Camera } from './camera';
-import type { LayerDef, RenderContext } from './types';
+import { createEffects, type Effects } from './effects';
+import { dayNight } from './layers/atmosphere';
+import { terrainCacheRef } from './layers/terrain';
+import { OverlayManager } from './overlays';
+import { helpers } from './preview';
+import type { DetailLevel, EffectKind, EffectOptions, LayerDef, OverlayInfo, RenderContext, RenderStats } from './types';
+
+/** CSS px per tile thresholds of the semantic zoom. */
+export const DETAIL_FAR = 12;
+export const DETAIL_CLOSE = 28;
 
 export class Renderer implements RendererApi {
   readonly camera = new Camera();
@@ -22,6 +34,13 @@ export class Renderer implements RendererApi {
   private fpsFrames = 0;
   private lastCam = { x: NaN, y: NaN, zoom: NaN };
   private dpr = 1;
+  private errors = new Map<string, number>();
+  readonly overlays: OverlayManager;
+  readonly fx: Effects;
+  /** Layers owned by the effects system (registered by render/index.ts). */
+  readonly fxLayers: LayerDef[];
+  readonly stats: RenderStats = { fps: 0, frameMs: 0, layerMs: {}, chunks: { chunks: 0, pixels: 0, redraws: 0, redrawMs: 0, lod: 0 } };
+  private rc: RenderContext | null = null;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -30,6 +49,10 @@ export class Renderer implements RendererApi {
     const g = canvas.getContext('2d', { alpha: false });
     if (!g) throw new Error('Canvas 2D niedostępny');
     this.g = g;
+    this.overlays = new OverlayManager(ctx);
+    const e = createEffects(ctx);
+    this.fx = e.fx;
+    this.fxLayers = e.layers;
 
     ctx.bus.on('game:started', ({ state }) => {
       this.camera.setBounds(state.map.width, state.map.height);
@@ -97,6 +120,21 @@ export class Renderer implements RendererApi {
     this.frameCbs.add(fn);
     return () => this.frameCbs.delete(fn);
   }
+  listOverlays(): OverlayInfo[] {
+    return this.overlays.list();
+  }
+  overlayInfo(id?: string | null): OverlayInfo | null {
+    return this.overlays.info(id === undefined ? this.overlay : id);
+  }
+  effect(kind: EffectKind, x: number, y: number, opts?: EffectOptions): void {
+    if (this.ctx.userSettings.reducedMotion && kind !== 'text' && kind !== 'icon') return;
+    this.fx.spawn(kind, x, y, opts);
+  }
+  /** Semantic zoom bucket for a zoom level. */
+  detailFor(zoom: number): DetailLevel {
+    const p = zoom * TILE_SIZE;
+    return p < DETAIL_FAR ? 'far' : p < DETAIL_CLOSE ? 'mid' : 'close';
+  }
 
   // ------------------------------------------------------------ loop
   start(): void {
@@ -155,39 +193,83 @@ export class Renderer implements RendererApi {
     if (!state) return;
 
     if (cam.x !== this.lastCam.x || cam.y !== this.lastCam.y || cam.zoom !== this.lastCam.zoom) {
-      this.lastCam = { x: cam.x, y: cam.y, zoom: cam.zoom };
+      this.lastCam.x = cam.x;
+      this.lastCam.y = cam.y;
+      this.lastCam.zoom = cam.zoom;
       this.ctx.bus.emit('camera:changed', { x: cam.x, y: cam.y, zoom: cam.zoom });
     }
 
-    const rc: RenderContext = {
-      g,
-      state,
-      camera: cam,
-      view: cam.visibleTiles(1),
-      zoom: cam.zoom,
-      timeMs: t,
-      dtMs: dt,
-      alpha: this.ctx.sim.alpha,
-      width: cam.viewW,
-      height: cam.viewH,
-      dpr,
-      data: this.ctx.data,
-      ctx: this.ctx,
-    };
+    let rc = this.rc;
+    if (!rc) {
+      rc = this.rc = {
+        g,
+        state,
+        camera: cam,
+        view: { x0: 0, y0: 0, x1: 0, y1: 0 },
+        zoom: 1,
+        timeMs: 0,
+        dtMs: 0,
+        alpha: 0,
+        width: 0,
+        height: 0,
+        dpr,
+        data: this.ctx.data,
+        ctx: this.ctx,
+        ppt: TILE_SIZE,
+        detail: 'close',
+        night: 0,
+        motion: true,
+        helpers,
+      };
+    }
+    rc.state = state;
+    cam.visibleTilesInto(rc.view, 1);
+    rc.zoom = cam.zoom;
+    rc.timeMs = t;
+    rc.dtMs = dt;
+    rc.alpha = this.ctx.sim.alpha;
+    rc.width = cam.viewW;
+    rc.height = cam.viewH;
+    rc.dpr = dpr;
+    rc.data = this.ctx.data;
+    rc.ppt = cam.zoom * TILE_SIZE;
+    rc.detail = this.detailFor(cam.zoom);
+    rc.night = this.ctx.userSettings.dayNightCycle ? dayNight(state).night : 0;
+    rc.motion = !this.ctx.userSettings.reducedMotion;
+
+    const t0 = performance.now();
     const z = cam.zoom * dpr;
+    const lm = this.stats.layerMs;
     for (const layer of this.layers) {
       if (this.hidden.has(layer.id)) continue;
       if (layer.visible && !layer.visible(rc)) continue;
+      const l0 = performance.now();
       g.save();
       if ((layer.space ?? 'world') === 'world') g.setTransform(z, 0, 0, z, dpr * (cam.viewW / 2 - cam.x * cam.zoom), dpr * (cam.viewH / 2 - cam.y * cam.zoom));
       else g.setTransform(dpr, 0, 0, dpr, 0, 0);
       try {
         layer.draw(rc);
       } catch (err) {
-        console.error(`[render] layer "${layer.id}" failed`, err);
-        this.hidden.add(layer.id);
+        const n = (this.errors.get(layer.id) ?? 0) + 1;
+        this.errors.set(layer.id, n);
+        console.error(`[render] layer "${layer.id}" failed (${n})`, err);
+        if (n >= 3) this.hidden.add(layer.id);
       }
       g.restore();
+      const ms = performance.now() - l0;
+      lm[layer.id] = (lm[layer.id] ?? ms) * 0.92 + ms * 0.08;
+    }
+    const ms = performance.now() - t0;
+    this.stats.frameMs = this.stats.frameMs * 0.92 + ms * 0.08;
+    this.stats.fps = this.fps;
+    const cs = terrainCacheRef?.stats;
+    if (cs) {
+      const c = this.stats.chunks;
+      c.chunks = cs.chunks;
+      c.pixels = cs.pixels;
+      c.redraws = cs.redraws;
+      c.redrawMs = cs.redrawMs;
+      c.lod = cs.lod;
     }
   }
 }

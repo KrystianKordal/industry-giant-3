@@ -37,6 +37,7 @@ import {
   ROAD_CAPACITY,
   ROAD_SPEED_MULT,
   TRAFFIC_DECAY,
+  TRAFFIC_UNIT,
   WATER_CAPACITY,
 } from './constants';
 import { canStep, findPathToBuilding } from './pathfinding';
@@ -110,10 +111,42 @@ export function baseSpeed(ctx: GameContext, v: Vehicle): number {
   if (v.mode === 'road') s *= ROAD_SPEED_MULT[ctx.state.network.road[i]!] ?? 1;
   else if (v.mode === 'rail') s *= RAIL_SPEED_MULT[ctx.state.network.rail[i]!] ?? 1;
   if (v.mode === 'rail' && v.wagons > 0 && def.wagons) s *= 1 - 0.04 * Math.max(0, v.wagons - def.wagons.min);
-  return s * weatherSpeed(v.mode, weatherAt(ctx.state, v.x, v.y));
+  return s * envSpeed(ctx, v);
 }
 
-const loadTime = (v: Vehicle, moved: number): number => LOAD_DAYS_BASE + (v.capacity > 0 ? (moved / v.capacity) * LOAD_DAYS_PER_CAPACITY : 0);
+/**
+ * Weather × world-event speed factor at the vehicle (0 = blocked). Uses
+ * ctx.services.world.modifierAt('speed.<mode>') (sampled every few ticks per
+ * vehicle); falls back to a built-in weather table when the world reports 1.
+ */
+const envCache = new WeakMap<GameState, Map<VehicleId, number>>();
+export function envSpeed(ctx: GameContext, v: Vehicle): number {
+  const state = ctx.state;
+  let cache = envCache.get(state);
+  if (!cache) envCache.set(state, (cache = new Map()));
+  const cached = cache.get(v.id);
+  if (cached !== undefined && (state.time.tick + v.id) % 5 !== 0) return cached;
+  let f = 1;
+  try {
+    f = ctx.services.world.modifierAt(`speed.${v.mode}`, Math.floor(v.x), Math.floor(v.y));
+  } catch {
+    f = 1;
+  }
+  if (!Number.isFinite(f)) f = 1;
+  if (f === 1) f = weatherSpeed(v.mode, weatherAt(state, v.x, v.y));
+  if ((v.mode === 'water' || v.mode === 'air') && stormAt(state, v.x, v.y)) f = 0;
+  f = Math.max(0, f);
+  cache.set(v.id, f);
+  return f;
+}
+
+/** Days to (un)load `moved` units; stations/hubs with def.loadRate (units/day) may be faster or slower. */
+function loadTime(ctx: GameContext, v: Vehicle, moved: number, buildingId: number): number {
+  const b = ctx.state.buildings[buildingId];
+  const rate = b ? ctx.data.buildings[b.typeId]?.loadRate : undefined;
+  if (rate && rate > 0) return LOAD_DAYS_BASE + moved / rate;
+  return LOAD_DAYS_BASE + (v.capacity > 0 ? (moved / v.capacity) * LOAD_DAYS_PER_CAPACITY : 0);
+}
 
 function tileCenter(W: number, i: TileIndex): [number, number] {
   const x = i % W;
@@ -181,7 +214,7 @@ function stepVehicle(ctx: GameContext, v: Vehicle, dt: number, loaders: Vehicle[
     case 'waiting':
       v.speed = 0;
       if (enRoute(v)) {
-        if (!stormAt(ctx.state, v.x, v.y)) v.status = 'moving';
+        if (envSpeed(ctx, v) > 0) v.status = 'moving';
         return;
       }
       v.timer -= dt;
@@ -268,7 +301,8 @@ function move(ctx: GameContext, v: Vehicle, dt: number): void {
     }
     if (!planLeg(ctx, v, route)) return;
   }
-  if ((v.mode === 'water' || v.mode === 'air') && stormAt(state, v.x, v.y)) {
+  if (envSpeed(ctx, v) <= 0) {
+    // storm / blocked waterway: wait en route
     v.status = 'waiting';
     v.speed = 0;
     return;
@@ -336,7 +370,7 @@ function enterTile(ctx: GameContext, v: Vehicle, i: TileIndex, seg: number): voi
   v.stats.distanceMonth += seg;
   if (v.mode === 'road' || v.mode === 'rail') {
     const t = state.network.traffic;
-    if (t[i]! < 65535) t[i]!++;
+    t[i] = Math.min(65535, t[i]! + TRAFFIC_UNIT);
   }
   if (def && def.emissions > 0) {
     const e = def.emissions * seg * getModifier(state.companies[v.owner], 'emissions.vehicles');
@@ -370,7 +404,7 @@ function arrive(ctx: GameContext, v: Vehicle, route: Route): void {
     route.stats.tripsMonth++;
     if (v.owner === state.playerCompanyId) ctx.bus.emit('sfx', { id: v.mode === 'rail' ? 'train' : v.mode === 'water' ? 'ship' : 'truck', x: v.x, y: v.y, volume: 0.5 });
   }
-  v.timer = moved > 0 ? loadTime(v, moved) : 0.1;
+  v.timer = moved > 0 ? loadTime(ctx, v, moved, b.id) : 0.1;
 }
 
 /** Load (in route-priority order). Called for 'unloading' (timer done) and 'waiting' vehicles. */
@@ -383,7 +417,7 @@ function loadPhase(ctx: GameContext, v: Vehicle): void {
   if (v.status === 'unloading') {
     const moved = loadAtStop(ctx, v, route, v.stopIndex);
     v.status = 'loading';
-    v.timer = moved > 0 ? loadTime(v, moved) : 0.1;
+    v.timer = moved > 0 ? loadTime(ctx, v, moved, route.stops[v.stopIndex]?.buildingId ?? 0) : 0.1;
     return;
   }
   // waiting for full load
@@ -477,7 +511,10 @@ export function vehicleDaily(state: GameState, _dt: number, ctx: GameContext): v
   for (const [owner, c] of repairs) if (c > 0) addMoney(ctx, owner, -c, 'vehicleUpkeep');
   // traffic decay
   const t = state.network.traffic;
-  for (let i = 0; i < t.length; i++) if (t[i]) t[i] = Math.floor(t[i]! * TRAFFIC_DECAY);
+  for (let i = 0; i < t.length; i++) {
+    const v = t[i]!;
+    if (v) t[i] = v > 8 ? Math.round(v * TRAFFIC_DECAY) : v - 1;
+  }
 }
 
 export function vehicleMonthly(state: GameState): void {

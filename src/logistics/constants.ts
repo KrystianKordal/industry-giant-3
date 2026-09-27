@@ -13,6 +13,8 @@ export const BRIDGE_MULT = { road: 6, rail: 8 } as const;
 export const MAX_BRIDGE_SPAN = 12;
 /** Extra cost factor when clearing forest (tree density > 0). */
 export const FOREST_CLEAR_MULT = 1.15;
+/** Extra cost factor when building over a city house (the house is removed by the world module). */
+export const HOUSE_CLEAR_MULT = 4;
 /** Fraction of construction cost refunded on bulldoze. */
 export const REFUND_RATE = 0.25;
 
@@ -65,8 +67,10 @@ export const BREAKDOWN_WEAR = 0.025;
 export const REPAIR_COST_FRACTION = 0.015;
 /** Traffic counter daily decay factor. */
 export const TRAFFIC_DECAY = 0.93;
-/** Traffic counter value treated as "max" for overlays (0..1 normalization). */
-export const TRAFFIC_REF = 400;
+/** Traffic counter increment per vehicle entering a tile. */
+export const TRAFFIC_UNIT = 10;
+/** Traffic counter value treated as "max" for overlays (0..1 normalization, ≈7 passes/day). */
+export const TRAFFIC_REF = 1000;
 
 /** Route display palette (cycled by route id). */
 export const ROUTE_COLORS = ['#e8b04a', '#4ac0e8', '#e85a4a', '#7be04a', '#c07be0', '#e87bb8', '#4ae0b0', '#e0e04a', '#8a9bff', '#ff9b5a'];

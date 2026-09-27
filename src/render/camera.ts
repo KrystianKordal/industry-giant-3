@@ -91,6 +91,19 @@ export class Camera {
     this.y = Math.min(h, Math.max(0, this.y));
   }
 
+  /** Like visibleTiles but writes into `out` (no allocation). */
+  visibleTilesInto(out: TileView, margin = 1): TileView {
+    const hw = this.viewW / 2 / this.zoom;
+    const hh = this.viewH / 2 / this.zoom;
+    const maxX = this.mapW || Infinity;
+    const maxY = this.mapH || Infinity;
+    out.x0 = Math.max(0, Math.floor((this.x - hw) / TILE_SIZE) - margin);
+    out.y0 = Math.max(0, Math.floor((this.y - hh) / TILE_SIZE) - margin);
+    out.x1 = Math.min(maxX, Math.ceil((this.x + hw) / TILE_SIZE) + margin);
+    out.y1 = Math.min(maxY, Math.ceil((this.y + hh) / TILE_SIZE) + margin);
+    return out;
+  }
+
   /** Visible tile range clamped to map, x1/y1 exclusive, with margin tiles. */
   visibleTiles(margin = 1): TileView {
     const tl = this.screenToTile(0, 0);

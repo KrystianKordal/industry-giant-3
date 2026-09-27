@@ -1,6 +1,7 @@
 /** Settings panel (user preferences, persisted in localStorage). */
 import { saveUserSettings } from '../../core/settings';
 import type { UserSettings } from '../../core/types';
+import { segmented } from '../components';
 import { h } from '../dom';
 import type { PanelDef } from '../types';
 
@@ -73,10 +74,24 @@ export const settingsPanel: PanelDef = {
       check('advisorEnabled', 'Podpowiedzi doradcy'),
       check('edgeScroll', 'Przewijanie krawędzią ekranu'),
       slider('scrollSpeed', 'Szybkość przewijania', 0.3, 3, 0.1),
+      h('div', { class: 'ig-section-title' }, 'Interfejs'),
+      h(
+        'div',
+        { class: 'ig-field' },
+        h('span', null, 'Skala interfejsu'),
+        segmented(
+          [0.85, 1, 1.15, 1.3, 1.5].map((v) => ({ value: v, label: `${Math.round(v * 100)}%` })),
+          [0.85, 1, 1.15, 1.3, 1.5].reduce((a, b) => (Math.abs(b - s.uiScale) < Math.abs(a - s.uiScale) ? b : a), 1),
+          (v) => {
+            s.uiScale = v;
+            changed();
+          },
+        ).el,
+      ),
       h('div', { class: 'ig-section-title' }, 'Grafika'),
       check('showGrid', 'Siatka kafli [G]'),
-      check('dayNightCycle', 'Cykl dnia i nocy'),
-      check('tiltShift', 'Efekt tilt-shift'),
+      check('dayNightCycle', 'Cykl dnia i nocy oraz pór roku'),
+      check('tiltShift', 'Efekt tilt-shift (miniatura)'),
       check('reducedMotion', 'Ogranicz animacje'),
       check('showFps', 'Pokaż FPS'),
     );

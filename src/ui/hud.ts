@@ -93,7 +93,7 @@ export function installHud(ctx: GameContext, ui: UiManager): void {
                   'button',
                   {
                     class: 'ig-toolbar-btn',
-                    dataset: { btn: def.id },
+                    dataset: { btn: def.id, id: def.id, toolbarId: def.id },
                     onclick: (e: MouseEvent) => {
                       try {
                         def.onClick(ctx, e);

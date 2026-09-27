@@ -76,6 +76,7 @@ export class DataRegistry {
     res.replaced = r.replaced;
     res.errors.push(...r.errors);
     if (!this.loadedMods.includes(pack.id)) this.loadedMods.push(pack.id);
+    this.extendShopAssortments();
     res.errors.push(...this.validate());
     this.version++;
     return res;
@@ -105,6 +106,25 @@ export class DataRegistry {
     return res;
   }
 
+  /**
+   * Shops declaring `sellsCategories` automatically sell every product of those
+   * categories (so mods adding e.g. a new food product need not replace shops).
+   * Defs are replaced by new objects (never mutated).
+   */
+  private extendShopAssortments(): void {
+    for (const b of Object.values(this.buildings)) {
+      if (b.category !== 'shop' || !b.sellsCategories?.length) continue;
+      const sells = new Set(b.sells ?? []);
+      let changed = false;
+      for (const p of Object.values(this.products))
+        if (b.sellsCategories.includes(p.category) && !sells.has(p.id)) {
+          sells.add(p.id);
+          changed = true;
+        }
+      if (changed) this.buildings[b.id] = { ...b, sells: [...sells] };
+    }
+  }
+
   /** Cross-reference validation. Returns human-readable (Polish) problems. */
   validate(): string[] {
     const errs: string[] = [];
@@ -119,7 +139,29 @@ export class DataRegistry {
     }
     for (const t of Object.values(this.techs)) {
       for (const p of t.prereqs) if (!this.techs[p]) errs.push(`Technologia "${t.id}": nieznany wymóg "${p}".`);
+      if (!this.eras[t.era]) errs.push(`Technologia "${t.id}": nieznana epoka "${t.era}".`);
+      for (const e of t.effects) {
+        const missing =
+          (e.kind === 'unlockBuilding' && !this.buildings[e.id]) ||
+          (e.kind === 'unlockRecipe' && !this.recipes[e.id]) ||
+          (e.kind === 'unlockVehicle' && !this.vehicles[e.id]) ||
+          (e.kind === 'unlockProduct' && !this.products[e.id]) ||
+          (e.kind === 'era' && !this.eras[e.id]);
+        if (missing) errs.push(`Technologia "${t.id}": efekt ${e.kind} wskazuje nieznane id "${(e as { id: string }).id}".`);
+      }
     }
+    const techRefs: [string, { id: string; requiresTech?: string }[]][] = [
+      ['Produkt', Object.values(this.products)],
+      ['Receptura', Object.values(this.recipes)],
+      ['Budynek', Object.values(this.buildings)],
+      ['Pojazd', Object.values(this.vehicles)],
+    ];
+    for (const [what, list] of techRefs)
+      for (const d of list) if (d.requiresTech && !this.techs[d.requiresTech]) errs.push(`${what} "${d.id}": nieznana technologia "${d.requiresTech}".`);
+    for (const p of Object.values(this.products)) if (!this.eras[p.era]) errs.push(`Produkt "${p.id}": nieznana epoka "${p.era}".`);
+    for (const v of Object.values(this.vehicles)) if (!this.eras[v.era]) errs.push(`Pojazd "${v.id}": nieznana epoka "${v.era}".`);
+    for (const b of Object.values(this.buildings))
+      for (const pid of b.sells ?? []) if (!this.products[pid]) errs.push(`Budynek "${b.id}": sprzedaje nieznany produkt "${pid}".`);
     for (const d of Object.values(this.deposits)) {
       if (!this.products[d.product]) errs.push(`Złoże "${d.id}": nieznany produkt "${d.product}".`);
     }

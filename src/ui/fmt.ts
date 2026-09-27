@@ -208,3 +208,28 @@ export function safe<T>(fn: () => T, fallback: T): T {
     return fallback;
   }
 }
+
+const EFFECT_LABEL: Record<string, string> = {
+  efficiency: 'wydajność',
+  workers: 'pracownicy',
+  capacity: 'pojemność',
+  upkeep: 'utrzymanie',
+  quality: 'jakość',
+  emissions: 'emisje',
+  speed: 'prędkość',
+  output: 'produkcja',
+  energy: 'energia',
+  wages: 'płace',
+  research: 'badania',
+};
+
+/** "wydajność +50%, pracownicy +40%" from an effects map (multiplicative convention). */
+export function effectsText(effects: Record<string, number>): string {
+  return Object.entries(effects)
+    .map(([k, v]) => {
+      const [eff, target] = k.split('.');
+      const pct = Math.round((v - 1) * 100);
+      return `${EFFECT_LABEL[eff ?? k] ?? eff}${target && target !== 'all' ? ` (${target})` : ''} ${pct >= 0 ? '+' : ''}${pct}%`;
+    })
+    .join(', ');
+}

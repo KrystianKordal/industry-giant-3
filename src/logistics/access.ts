@@ -45,8 +45,8 @@ export function supportsMode(def: BuildingDef | undefined, mode: TransportMode):
 export const isWaterTile = (state: GameState, data: DataRegistry, i: TileIndex): boolean =>
   !!data.terrain[state.map.terrain[i]!]?.isWater || (state.map.flags[i]! & TileFlag.River) !== 0;
 
-/** Tiles 4-adjacent to the footprint (the ring without corners). */
-export function ringTiles(state: GameState, b: Pick<Building, 'x' | 'y' | 'w' | 'h'>): TileIndex[] {
+/** Tiles 4-adjacent to the footprint (the ring without corners; with corners when `corners`). */
+export function ringTiles(state: GameState, b: Pick<Building, 'x' | 'y' | 'w' | 'h'>, corners = false): TileIndex[] {
   const { width: W, height: H } = state.map;
   const out: TileIndex[] = [];
   const add = (x: number, y: number): void => {
@@ -59,6 +59,12 @@ export function ringTiles(state: GameState, b: Pick<Building, 'x' | 'y' | 'w' | 
   for (let y = b.y; y < b.y + b.h; y++) {
     add(b.x - 1, y);
     add(b.x + b.w, y);
+  }
+  if (corners) {
+    add(b.x - 1, b.y - 1);
+    add(b.x + b.w, b.y - 1);
+    add(b.x - 1, b.y + b.h);
+    add(b.x + b.w, b.y + b.h);
   }
   return out;
 }
@@ -80,7 +86,7 @@ export function accessTiles(ctx: GameContext, b: Building, mode: TransportMode):
     case 'rail':
       return ringTiles(state, b).filter((i) => net.rail[i]! > 0 && !dmg(i));
     case 'water':
-      return ringTiles(state, b).filter((i) => isWaterTile(state, ctx.data, i));
+      return ringTiles(state, b, true).filter((i) => isWaterTile(state, ctx.data, i));
     case 'air':
       return [centerTile(state, b)];
   }
@@ -159,7 +165,10 @@ export function acceptSlot(ctx: GameContext, b: Building, p: ProductId, ignoreCo
   if (def.category === 'shop') {
     const prod = data.products[p];
     if (!prod) return null;
-    const ok = def.sells && def.sells.length ? def.sells.includes(p) : SHOP_CATEGORIES.includes(prod.category);
+    const ok =
+      def.sells && def.sells.length
+        ? def.sells.includes(p)
+        : (def.sellsCategories && def.sellsCategories.length ? def.sellsCategories : SHOP_CATEGORIES).includes(prod.category);
     if (!ok) return null;
     if (b.shop && b.shop.assortment.length && !b.shop.assortment.includes(p)) return null;
     return 'input';

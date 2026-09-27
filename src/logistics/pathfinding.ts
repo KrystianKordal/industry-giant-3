@@ -40,7 +40,7 @@ export function canStep(state: GameState, data: DataRegistry, mode: TransportMod
   if (!passable(state, data, mode, b)) return false;
   if (mode === 'rail') {
     const W = state.map.width;
-    const d = b - a === -W ? 0 : b - a === 1 ? 1 : b - a === W ? 2 : b - a === -1 ? 3 : -1;
+    const d: number = b - a === -W ? 0 : b - a === 1 ? 1 : b - a === W ? 2 : b - a === -1 ? 3 : -1;
     if (d < 0) return false;
     // allow leaving a tile without rail (e.g. start) but require the connection otherwise
     return !state.network.rail[a] || (state.network.railConn[a]! & DIR_BITS[d]!) !== 0;

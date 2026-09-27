@@ -6,6 +6,7 @@
  */
 import type { GameContext } from '../core/context';
 import type { GameState } from '../core/types';
+import { trafficLevel } from '../logistics/api';
 import { h, setChildren } from './dom';
 import { tooltip } from './tooltip';
 import type { OverlayDef } from './types';
@@ -112,8 +113,7 @@ export const DEFAULT_OVERLAYS: OverlayDef[] = [
     gradient: { stops: ['#50c878', '#e8d24a', '#ff5a3c'], min: 'luźno', max: 'korek' },
     minimapColor(st, i) {
       if (!st.network.road[i] && !st.network.rail[i]) return null;
-      const v = st.network.traffic[i]!;
-      return heat(Math.min(1, v / 60), 255);
+      return heat(trafficLevel(st, i), 255);
     },
   },
   {

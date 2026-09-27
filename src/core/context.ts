@@ -8,7 +8,7 @@
  */
 import type { HotkeyDef, ToolDef } from '../input/types';
 import type { Camera } from '../render/camera';
-import type { LayerDef } from '../render/types';
+import type { EffectKind, EffectOptions, LayerDef, OverlayInfo, RenderStats } from '../render/types';
 import type { HudItemDef, OverlayDef, PanelDef, ToastOptions, ToolbarButtonDef } from '../ui/types';
 import { registry as globalRegistry, type DataRegistry } from '../data/registry';
 import { createBus, type GameBus } from './bus';
@@ -36,6 +36,14 @@ export interface RendererApi {
   setOverlay(id: string | null): void;
   /** Callback every animation frame (before drawing). Returns unsubscribe. */
   onFrame(fn: (dtMs: number) => void): () => void;
+  /** All overlays the renderer can draw (id, name, icon, description, legend). */
+  listOverlays(): OverlayInfo[];
+  /** Info + legend (current min/max) of an overlay (default: the active one). null if unknown/none. */
+  overlayInfo(id?: string | null): OverlayInfo | null;
+  /** Spawn a visual effect at TILE coords (fractional): smoke, dust, sparkle, splash, coins, text, icon. */
+  effect(kind: EffectKind, x: number, y: number, opts?: EffectOptions): void;
+  /** Frame timing (fps, frame ms, per-layer ms, chunk cache). */
+  readonly stats: RenderStats;
 }
 
 export interface UiApi {
@@ -144,6 +152,10 @@ function headlessRenderer(): RendererApi {
     centerOn: () => {},
     setOverlay: () => {},
     onFrame: () => () => {},
+    listOverlays: () => [],
+    overlayInfo: () => null,
+    effect: () => {},
+    stats: { fps: 0, frameMs: 0, layerMs: {}, chunks: { chunks: 0, pixels: 0, redraws: 0, redrawMs: 0, lod: 0 } },
   };
 }
 

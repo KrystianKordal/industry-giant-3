@@ -7,7 +7,7 @@ import type { GameContext } from '../core/context';
 import { cityPopulation } from '../core/entities';
 import type { ScenarioInfo } from '../core/services';
 import type { GameState, NewGameOptions } from '../core/types';
-import { clamp } from '../core/util';
+import { clamp, newId } from '../core/util';
 import type { ObjectiveSpec } from './objectives';
 import { gameExt } from './tracking';
 
@@ -34,9 +34,29 @@ export interface ScenarioDef {
 
 const BUILDING_MATERIALS = ['bricks', 'cement', 'planks', 'glass', 'steel'];
 
-/** Increase city preference (demand multiplier) for products. */
-function boostDemand(state: GameState, products: string[], factor: number): void {
-  for (const c of Object.values(state.cities)) for (const p of products) c.preferences[p] = (c.preferences[p] ?? 1) * factor;
+/**
+ * Long-lasting global demand boost via a world event (world applies
+ * `demand.<pid>` effects — see CONTRACTS §14), instead of touching preferences.
+ */
+function boostDemand(state: GameState, products: string[], factor: number, years: number, title: string): void {
+  const effects: Record<string, number> = {};
+  for (const p of products) effects[`demand.${p}`] = factor;
+  state.events.active.push({
+    id: newId(state, 'event'),
+    kind: 'custom',
+    title,
+    description: 'Zniszczone miasta potrzebują materiałów budowlanych.',
+    icon: '🏗️',
+    startDay: state.time.totalDays,
+    endDay: state.time.totalDays + Math.round(years * 360),
+    area: null,
+    regionIds: [],
+    cityId: 0,
+    productId: null,
+    companyId: 0,
+    magnitude: factor,
+    effects,
+  });
 }
 
 export const SCENARIOS: ScenarioDef[] = [
@@ -106,7 +126,7 @@ export const SCENARIOS: ScenarioDef[] = [
         c.satisfaction = Math.min(c.satisfaction, 0.25);
         c.growthRate = Math.min(c.growthRate, 0);
       }
-      boostDemand(state, BUILDING_MATERIALS, 3);
+      boostDemand(state, BUILDING_MATERIALS, 2.5, 20, 'Odbudowa kraju');
     },
     objectives: [
       { id: 'rebuild_cities', kind: 'supplyCity', title: 'Zaspokój ≥50% popytu na {product} w 3 miastach', products: ['bricks', 'cement', 'planks'], target: 3, meta: { threshold: 0.5 }, reward: 50000, deadlineYears: 15, fallback: { kind: 'deliver', title: 'Sprzedaj 3 000 szt. towarów', target: 3000 } },

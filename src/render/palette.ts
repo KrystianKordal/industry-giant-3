@@ -46,7 +46,7 @@ const SUMMER: TerrainPalette = {
   hills: c('#9eae6c'),
   rock: c('#a09787'),
   rockDark: c('#6f675e'),
-  snow: c('#f1f5f7'),
+  snow: c('#e8eef1'),
   desert: c('#e3c588'),
   swamp: c('#6d8756'),
   swampWater: c('#4f6f5e'),

@@ -3,7 +3,6 @@
  * viewport rectangle, click/drag to jump. Optional overlay mode tints tiles
  * using the active OverlayDef.minimapColor. Base image refreshed ~1×/s.
  */
-import { TILE_SIZE } from '../core/constants';
 import type { GameContext } from '../core/context';
 import type { GameState } from '../core/types';
 import { h } from './dom';
@@ -245,5 +244,4 @@ export function installMinimap(ctx: GameContext, ui: UiManager): void {
   setInterval(() => redraw(), 1000);
 
   ctx.input.registerHotkey({ key: 'm', description: 'Minimapa pokaż/ukryj', handler: () => setVisible(!visible) });
-  void TILE_SIZE;
 }

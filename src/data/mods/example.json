@@ -1,0 +1,19 @@
+{
+  "id": "example_honey",
+  "name": "Pszczelarstwo (przykładowy mod)",
+  "version": "1.0.0",
+  "author": "Industry Giant 3",
+  "description": "Dodaje pasiekę, miód i miodosytnię. Wpisy z istniejącym id zastępują bazowe definicje, nowe id są dodawane.",
+  "products": [
+    { "id": "honey", "name": "Miód", "icon": "🍯", "category": "food", "era": "industrial", "basePrice": 35, "isRaw": true, "weightClass": "light", "consumption": { "poor": 3, "middle": 8, "rich": 12 }, "color": "#e8a820" },
+    { "id": "mead", "name": "Miód pitny", "icon": "🍯", "category": "luxury", "era": "industrial", "basePrice": 110, "isRaw": false, "weightClass": "liquid", "consumption": { "poor": 0, "middle": 3, "rich": 10 }, "color": "#c08010" }
+  ],
+  "recipes": [
+    { "id": "keep_bees", "name": "Pszczelarstwo", "inputs": [], "outputs": [{ "product": "honey", "qty": 20 }], "days": 10, "qualityModifier": 0.05 },
+    { "id": "brew_mead", "name": "Warzenie miodu pitnego", "inputs": [{ "product": "honey", "qty": 10 }], "outputs": [{ "product": "mead", "qty": 6 }], "days": 8, "qualityModifier": 0.1 }
+  ],
+  "buildings": [
+    { "id": "apiary", "name": "Pasieka", "icon": "🐝", "category": "raw", "era": "industrial", "size": { "w": 2, "h": 2 }, "cost": 4000, "upkeep": 80, "workers": 3, "allowedTerrain": [3, 4, 10], "minFertility": 60, "recipes": ["keep_bees"], "pollution": 0, "capacity": 150, "buildDays": 6, "tags": ["farm", "agri"], "color": "#e8c040", "description": "Miód z łąk i lasów." },
+    { "id": "meadery", "name": "Miodosytnia", "icon": "🍯", "category": "factory", "era": "industrial", "size": { "w": 2, "h": 2 }, "cost": 9000, "upkeep": 180, "workers": 5, "allowedTerrain": [2, 3, 4, 5, 7, 8, 10], "recipes": ["brew_mead"], "pollution": 1, "capacity": 150, "buildDays": 10, "tags": ["food", "luxury"], "color": "#c08010" }
+  ]
+}

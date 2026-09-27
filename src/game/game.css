@@ -1,0 +1,161 @@
+/* Game module (campaign, objectives, tutorial). Owner: AI/game/audio agent. */
+
+.ig-campaign {
+  display: flex;
+  gap: 14px;
+  min-height: 360px;
+}
+.ig-campaign-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 230px;
+  flex-shrink: 0;
+}
+.ig-campaign-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.ig-campaign-card:hover {
+  background: var(--panel-3);
+}
+.ig-campaign-card.active {
+  border-color: var(--accent);
+}
+.ig-campaign-card.locked {
+  opacity: 0.55;
+}
+.ig-campaign-icon {
+  font-size: 24px;
+  width: 30px;
+  text-align: center;
+}
+.ig-campaign-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ig-campaign-title {
+  font-size: 1.5em;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.ig-campaign-intro {
+  line-height: 1.5;
+  margin: 4px 0;
+  color: var(--text);
+}
+.ig-campaign-goals {
+  margin: 4px 0 0;
+  padding-left: 4px;
+  list-style: none;
+  line-height: 1.7;
+}
+
+.ig-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ig-goal.done .ig-strong {
+  color: var(--success);
+}
+.ig-goal.failed .ig-strong {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.ig-milestones {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+}
+.ig-milestone {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.92em;
+  color: var(--text-faint);
+}
+.ig-milestone.done {
+  color: var(--text);
+}
+.ig-milestone-icon {
+  width: 20px;
+  text-align: center;
+}
+
+.ig-result {
+  text-align: center;
+  padding: 10px 0;
+}
+.ig-result-icon {
+  font-size: 56px;
+  animation: ig-result-pop 0.6s ease-out;
+}
+.ig-result-title {
+  font-size: 1.6em;
+  font-weight: 700;
+}
+.ig-result.won .ig-result-title {
+  color: var(--accent-2);
+}
+.ig-result.lost .ig-result-title {
+  color: var(--danger);
+}
+@keyframes ig-result-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.ig-tut-title {
+  font-weight: 700;
+  font-size: 1.15em;
+  color: var(--accent-2);
+  margin-top: 6px;
+}
+.ig-tut-text {
+  line-height: 1.5;
+  margin: 6px 0;
+}
+.ig-tut-highlight {
+  outline: 2px solid var(--accent-2) !important;
+  outline-offset: 2px;
+  animation: ig-tut-pulse 1.2s ease-in-out infinite;
+  position: relative;
+  z-index: 2;
+}
+@keyframes ig-tut-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 201, 107, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(245, 201, 107, 0);
+  }
+}
+
+.ig-hud-goals {
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}

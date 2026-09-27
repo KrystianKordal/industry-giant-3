@@ -3,7 +3,7 @@ import type { GameContext } from '../../core/context';
 import { formatMoney } from '../../core/format';
 import { endGame, saveGame, startLoadedGame } from '../../core/lifecycle';
 import { AUTOSAVE_SLOT, deleteSlot, exportToFile, listSlots, loadFromSlot, pickSaveFile } from '../../core/save';
-import { button } from '../components';
+import { button, confirmDialog } from '../components';
 import { h, setChildren } from '../dom';
 import type { PanelDef } from '../types';
 
@@ -100,13 +100,37 @@ export const gameMenuPanel: PanelDef = {
   width: 280,
   refreshMs: 0,
   create(p, ctx) {
-    const col = h('div', { class: 'ig-col' });
+    // pause while the menu is open, restore the previous state on close
+    const wasPaused = ctx.tryState()?.time.paused ?? true;
+    if (ctx.hasGame) ctx.sim.setPaused(true);
+    p.onClose = () => {
+      if (ctx.hasGame && !wasPaused) ctx.sim.setPaused(false);
+    };
+    const col = h('div', { class: 'ig-col ig-game-menu' });
     col.append(
-      button('Wróć do gry', () => p.close(), { variant: 'primary' }),
+      h('div', { class: 'ig-muted ig-small', style: { textAlign: 'center' } }, '⏸ Gra wstrzymana'),
+      button('Wróć do gry', () => p.close(), { variant: 'primary', icon: '▶' }),
       button('Zapisz grę', () => ctx.ui.openPanel('saveLoad', { mode: 'save' }), { icon: '💾' }),
       button('Wczytaj grę', () => ctx.ui.openPanel('saveLoad', { mode: 'load' }), { icon: '📂' }),
       button('Ustawienia', () => ctx.ui.openPanel('settings'), { icon: '⚙️' }),
-      button('Wyjdź do menu głównego', () => {
+      button('Pomoc i skróty', () => ctx.ui.openPanel('help'), { icon: '❔' }),
+      button('Encyklopedia', () => ctx.ui.openPanel('encyclopedia'), { icon: '📖' }),
+      button('Wyjdź do menu głównego', async () => {
+        if (!ctx.ui.root) return;
+        const ans = await confirmDialog(ctx.ui.root, 'Wyjść do menu?', 'Niezapisane postępy zostaną utracone (chyba że masz autozapis).', [
+          { id: 'save', label: 'Zapisz i wyjdź', variant: 'primary' },
+          { id: 'quit', label: 'Wyjdź bez zapisu', variant: 'danger' },
+          { id: 'no', label: 'Anuluj', variant: 'ghost' },
+        ]);
+        if (ans === 'no' || ans === null) return;
+        if (ans === 'save') {
+          try {
+            await saveGame(ctx, AUTOSAVE_SLOT);
+          } catch (err) {
+            ctx.ui.toast({ level: 'danger', title: 'Błąd zapisu', text: err instanceof Error ? err.message : String(err) });
+            return;
+          }
+        }
         p.close();
         endGame(ctx);
       }, { icon: '🚪', variant: 'danger' }),

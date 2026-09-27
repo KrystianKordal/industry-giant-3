@@ -69,6 +69,9 @@ export class ChunkCache {
   budgetMs: number;
   /** Max canvas pixels kept for LOD > 0 (LRU eviction). */
   maxPixels: number;
+  /** Pre-render LOD 0 of the whole map in spare frame time. */
+  prewarm = true;
+  private warmCursor = 0;
   /** Legacy option: max chunk redraws per frame (0 = time budget only). */
   maxRedrawsPerFrame = 0;
   readonly stats: ChunkCacheStats = { chunks: 0, pixels: 0, redraws: 0, redrawMs: 0, lod: 0 };
@@ -166,6 +169,18 @@ export class ChunkCache {
           this.drawFallback(g, c, rc.state, ov);
         }
       }
+    // idle prewarm: coarsest LOD for the whole map (fallback + fast zoom-out)
+    if (this.prewarm && performance.now() - t0 < this.budgetMs * 0.6) {
+      const size0 = this.lods[0]!.tiles;
+      const ncx = Math.ceil(map.width / size0);
+      const ncy = Math.ceil(map.height / size0);
+      const total = ncx * ncy;
+      for (let n = 0; n < total && performance.now() - t0 < this.budgetMs * 0.6; n++) {
+        const k = this.warmCursor++ % total;
+        const c = this.ensure(0, k % ncx, (k / ncx) | 0, map.width, map.height);
+        if (c && c.dirty) this.render(c, 0, rc.state);
+      }
+    }
     if (this.finePixels > this.maxPixels) this.evict();
     st.redrawMs = performance.now() - t0;
     let n = 0;

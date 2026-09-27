@@ -25,6 +25,7 @@ import type {
   LoanId,
   NewGameOptions,
   ProductId,
+  RegionWeather,
   RouteId,
   RouteStop,
   TileIndex,
@@ -61,6 +62,16 @@ export interface EconomyService {
   setBuildingEnabled?(buildingId: BuildingId, enabled: boolean): boolean;
   /** OPTIONAL: install a BuildingDef.upgrades entry (pays; UI falls back to a simple trySpend + push). */
   upgradeBuilding?(buildingId: BuildingId, upgradeId: string): ActionResult;
+  /** OPTIONAL (economy): shop price multiplier 0.5..2 vs local price (lower = more customers). */
+  setShopPrice?(buildingId: BuildingId, priceFactor: number): boolean;
+  /** OPTIONAL (economy): monthly R&D budget in zł (converted to research points, spent only while researching). */
+  setResearchBudget?(companyId: CompanyId, amount: number): boolean;
+  /** OPTIONAL (economy): queue a tech (missing prerequisites are queued first); starts at once if idle. */
+  queueResearch?(companyId: CompanyId, techId: string): ActionResult;
+  /** OPTIONAL (economy): pause current research (progress is kept). */
+  cancelResearch?(companyId: CompanyId): boolean;
+  /** OPTIONAL (economy): restore building condition to 100% (pays repair cost). */
+  repairBuilding?(buildingId: BuildingId): ActionResult;
 }
 
 // ---------------------------------------------------------------- logistics (logistics agent)
@@ -128,6 +139,18 @@ export interface WorldService {
   /** Weather region index for a tile. */
   regionAt(x: number, y: number): number;
   isBuildableTile(x: number, y: number): boolean;
+  /** Tile indices within a disk of radius r (clipped to the map). [world, additive] */
+  tilesInRadius(x: number, y: number, r: number): TileIndex[];
+  /** Road/rail construction cost multiplier of a tile (terrain × slope × river/bridge; Infinity = impossible). */
+  terrainCost(x: number, y: number, kind: 'road' | 'rail'): number;
+  /** Weather of the region containing the tile (null = no weather). */
+  weatherAt(x: number, y: number): RegionWeather | null;
+  /**
+   * Combined weather × world-event multiplier for a key at a tile (1 = neutral), e.g.
+   * 'speed.water' (0 = blocked by storm), 'speed.road', 'efficiency.farm', 'season.farm'.
+   * x/y omitted = only global events. See CONTRACTS "Świat — API".
+   */
+  modifierAt(key: string, x?: number, y?: number): number;
 }
 
 // ---------------------------------------------------------------- game (ai/game/audio agent)
@@ -276,6 +299,25 @@ export function createDefaultServices(ctx: GameContext): Services {
       const i = tileIndex(m, x, y);
       return !!ctx.data.terrain[m.terrain[i]!]?.buildable && !m.building[i] && !ctx.state.network.road[i] && !ctx.state.network.rail[i];
     },
+    tilesInRadius(x, y, r) {
+      const m = ctx.state.map;
+      const out: TileIndex[] = [];
+      for (let ty = Math.max(0, Math.floor(y - r)); ty <= Math.min(m.height - 1, Math.ceil(y + r)); ty++)
+        for (let tx = Math.max(0, Math.floor(x - r)); tx <= Math.min(m.width - 1, Math.ceil(x + r)); tx++)
+          if (dist(x, y, tx, ty) <= r) out.push(tileIndex(m, tx, ty));
+      return out;
+    },
+    terrainCost(x, y) {
+      const m = ctx.state.map;
+      if (!inBounds(m, x, y)) return Infinity;
+      return ctx.data.terrain[m.terrain[tileIndex(m, x, y)]!]?.networkCost ?? 1;
+    },
+    weatherAt(x, y) {
+      const w = ctx.state.weather;
+      if (!w.regions.length) return null;
+      return w.regions[world.regionAt(x, y)] ?? null;
+    },
+    modifierAt: () => 1,
   };
 
   const game: GameService = { scenarios: () => [], currentHint: () => null };

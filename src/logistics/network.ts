@@ -22,6 +22,7 @@ import {
   BRIDGE_MULT,
   BRIDGE_UPKEEP_MULT,
   FOREST_CLEAR_MULT,
+  HOUSE_CLEAR_MULT,
   MAX_BRIDGE_SPAN,
   PLAN_MARGIN,
   RAIL_COST,
@@ -83,15 +84,34 @@ export interface TileCheck {
   existing: boolean;
 }
 
+/** Terrain multiplier of a land tile (world.terrainCost: terrain × slope × river; fallback terrain def). */
+function landMult(ctx: GameContext, kind: NetKind, i: TileIndex): number {
+  const state = ctx.state;
+  const W = state.map.width;
+  const x = i % W;
+  const y = (i - x) / W;
+  const t = ctx.data.terrain[state.map.terrain[i]!];
+  const own = t && Number.isFinite(t.networkCost) ? t.networkCost : 1;
+  let mult = own;
+  try {
+    const w = ctx.services.world.terrainCost(x, y, kind);
+    if (Number.isFinite(w) && w > 0) mult = w;
+  } catch {
+    /* world service not ready */
+  }
+  if (state.map.flags[i]! & TileFlag.River) mult = Math.max(mult, own * (kind === 'rail' ? 4 : 3));
+  if (state.map.forest[i]! > 0) mult *= FOREST_CLEAR_MULT;
+  if (state.map.house[i]! > 0 && !state.network.road[i]) mult *= HOUSE_CLEAR_MULT;
+  return mult;
+}
+
 /** Base price of one tile (before existing-network discount). */
-export function tileBaseCost(state: GameState, data: DataRegistry, kind: NetKind, level: number, i: TileIndex): number {
+export function tileBaseCost(ctx: GameContext, kind: NetKind, level: number, i: TileIndex): number {
   const table = kind === 'road' ? ROAD_COST : RAIL_COST;
   const base = table[level] ?? table[1];
-  const t = data.terrain[state.map.terrain[i]!];
-  if (needsBridge(state, data, i)) return base * BRIDGE_MULT[kind];
-  let mult = t && Number.isFinite(t.networkCost) ? t.networkCost : 1;
-  if (state.map.forest[i]! > 0) mult *= FOREST_CLEAR_MULT;
-  return base * mult;
+  const state = ctx.state;
+  if (ctx.data.terrain[state.map.terrain[i]!]?.isWater) return base * BRIDGE_MULT[kind];
+  return base * landMult(ctx, kind, i);
 }
 
 /** Validate one tile for construction of `kind` at `level`. */
@@ -106,13 +126,12 @@ export function checkTile(ctx: GameContext, companyId: CompanyId, kind: NetKind,
   if (cur >= level) return { ok: true, cost: 0, bridge, existing: true };
   if (map.flags[i]! & TileFlag.Blocked) return { ok: false, reason: 'Teren zablokowany', cost: 0, bridge, existing: false };
   if (map.building[i]) return { ok: false, reason: 'Na drodze stoi budynek', cost: 0, bridge, existing: false };
-  if (map.house[i]! > 0 && !net.road[i]) return { ok: false, reason: 'Zabudowa miejska', cost: 0, bridge, existing: false };
   if (cur > 0 && net.owner[i] && net.owner[i] !== companyId)
     return { ok: false, reason: 'Infrastruktura innej firmy', cost: 0, bridge, existing: false };
   const t = ctx.data.terrain[map.terrain[i]!];
   if (!bridge && t && !Number.isFinite(t.networkCost)) return { ok: false, reason: `Nie można budować na: ${t.name}`, cost: 0, bridge, existing: false };
-  let cost = tileBaseCost(state, ctx.data, kind, level, i);
-  if (cur > 0) cost -= tileBaseCost(state, ctx.data, kind, cur, i); // upgrade: pay the difference
+  let cost = tileBaseCost(ctx, kind, level, i);
+  if (cur > 0) cost -= tileBaseCost(ctx, kind, cur, i); // upgrade: pay the difference
   return { ok: true, cost: Math.max(0, Math.round(cost)), bridge, existing: false };
 }
 
@@ -301,7 +320,7 @@ export function refundFor(ctx: GameContext, kind: NetKind, i: TileIndex): number
   const state = ctx.state;
   const lvl = kind === 'road' ? state.network.road[i]! : state.network.rail[i]!;
   if (!lvl) return 0;
-  return Math.round(tileBaseCost(state, ctx.data, kind, lvl, i) * REFUND_RATE);
+  return Math.round(tileBaseCost(ctx, kind, lvl, i) * REFUND_RATE);
 }
 
 /** Can company remove this tile? */
@@ -458,7 +477,7 @@ export function planBetween(ctx: GameContext, kind: NetKind, sources: readonly T
     const c = checkTile(ctx, owner, kind, 1, i);
     if (!c.ok) return -1;
     const base = kind === 'road' ? ROAD_COST[1] : RAIL_COST[1];
-    return tileBaseCost(state, data, kind, 1, i) / base;
+    return tileBaseCost(ctx, kind, 1, i) / base;
   };
   const costCache = new Map<number, number>();
   const cost = (i: number): number => {

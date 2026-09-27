@@ -100,7 +100,7 @@ export function installHints(ctx: GameContext, ui: UiManager): void {
     let x = input.pointer.sx / sc + 22;
     let y = input.pointer.sy / sc + 22;
     if (x + cw > vw - 8) x = input.pointer.sx / sc - cw - 18;
-    if (y + chh > vh - 90) y = input.pointer.sy / sc - chh - 18;
+    if (y + chh > vh - 120) y = input.pointer.sy / sc - chh - 18;
     card.style.left = `${Math.max(6, x)}px`;
     card.style.top = `${Math.max(50, y)}px`;
   };
@@ -178,7 +178,11 @@ export function installHints(ctx: GameContext, ui: UiManager): void {
     if (!current) show();
   };
 
-  ctx.bus.on('advisor:tip', (t) => push({ id: t.id, text: t.text, target: t.target }));
+  ctx.bus.on('advisor:tip', (t) => {
+    // the advisor usually also logs a notify() toast — show the tip only once (in the bubble)
+    if (ctx.userSettings.advisorEnabled) queueMicrotask(() => ui.dismissToastsMatching(t.text));
+    push({ id: t.id, text: t.text, target: t.target });
+  });
   setInterval(() => {
     if (!ctx.hasGame || !ctx.userSettings.advisorEnabled) return;
     let hint: string | null = null;

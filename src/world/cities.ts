@@ -382,7 +382,7 @@ export function developCity(state: GameState, data: DataRegistry, city: City, cs
           if (seen.has(n)) continue;
           seen.add(n);
           const d = Math.hypot(nx - city.x, ny - city.y);
-          if (d > R + 0.5 || !houseable(state, n, city.id)) continue;
+          if (d > R + 0.5 || isStreet(nx - city.x, ny - city.y) || !houseable(state, n, city.id)) continue;
           cands.push({ i: n, k: d + hash01(state.map.seed, n, 7) * 1.5 });
         }
     }

@@ -64,6 +64,9 @@ export function buildingTooltip(ctx: GameContext, d: BuildingDef, lockReason = '
   return h('div', { class: 'ig-tt' }, rows);
 }
 
+/** Open the build palette on a category (set by installBuildMenu). */
+export let openBuildMenu: (catId: string) => void = () => {};
+
 export function installBuildMenu(ctx: GameContext, ui: UiManager): { open(catId: string): void; toggle(catId?: string): void } {
   const fly = h('div', { class: 'ig-flyout ig-build-fly' }) as HTMLElement & { closeFly?: () => void };
   fly.style.display = 'none';
@@ -125,6 +128,7 @@ export function installBuildMenu(ctx: GameContext, ui: UiManager): { open(catId:
                 'button',
                 {
                   class: `ig-build-card${lock.unlocked ? '' : ' locked'}${activeType === d.id ? ' active' : ''}`,
+                  dataset: { id: d.id, tool: 'build' },
                   onclick: () => {
                     if (!lock.unlocked) {
                       ctx.ui.toast({ level: 'info', icon: '🔒', title: `${d.name} — zablokowane`, text: lock.reason, durationMs: 3500 });
@@ -201,5 +205,6 @@ export function installBuildMenu(ctx: GameContext, ui: UiManager): { open(catId:
     if (current && fly.style.display !== 'none') render(false);
   }, 1000);
 
+  openBuildMenu = open;
   return { open, toggle };
 }
