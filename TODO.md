@@ -49,14 +49,14 @@ Zasady:
 ## TODO
 
 ### Etap 0 — fundament (blokuje resztę)
-- [ ] Scaffold Vite + TS strict, skrypty `dev`/`build`/`typecheck`, Vitest
-- [ ] `core/types.ts` — pełny model stanu (mapa, kafle, budynki, magazyny towarów z jakością, pojazdy, trasy, miasta, firmy, finanse, badania, zdarzenia, ustawienia)
-- [ ] EventBus, seedowany RNG, pętla symulacji (pauza, x1/x2/x4), kalendarz (dzień/miesiąc/rok, pory roku)
-- [ ] Rejestr danych + szkielety plików danych
-- [ ] Renderer: kamera (pan/zoom), rysowanie kafli, pętla rAF oddzielona od symulacji
-- [ ] Framework UI (panele, okna, przyciski, wykresy sparkline), HUD
-- [ ] Zapis/odczyt (localStorage + eksport pliku)
-- [ ] `docs/CONTRACTS.md` — API modułów dla pozostałych agentów
+- [x] Scaffold Vite + TS strict, skrypty `dev`/`build`/`typecheck`, Vitest
+- [x] `core/types.ts` — pełny model stanu (mapa, kafle, budynki, magazyny towarów z jakością, pojazdy, trasy, miasta, firmy, finanse, badania, zdarzenia, ustawienia)
+- [x] EventBus, seedowany RNG, pętla symulacji (pauza, x1/x2/x4), kalendarz (dzień/miesiąc/rok, pory roku)
+- [x] Rejestr danych + szkielety plików danych
+- [x] Renderer: kamera (pan/zoom), rysowanie kafli, pętla rAF oddzielona od symulacji
+- [x] Framework UI (panele, okna, przyciski, wykresy sparkline), HUD
+- [x] Zapis/odczyt (localStorage + eksport pliku)
+- [x] `docs/CONTRACTS.md` — API modułów dla pozostałych agentów
 
 ### Etap 1 — systemy (równolegle)
 **A. Dane i ekonomia produkcji**
