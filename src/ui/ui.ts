@@ -10,8 +10,9 @@
  * charts → ui/charts.ts, tooltips → ui/tooltip.ts, DOM helper → ui/dom.ts.
  */
 import type { GameContext, UiApi } from '../core/context';
+import type { EntityRef } from '../core/types';
 import { h } from './dom';
-import type { HudItemDef, PanelDef, PanelInstance, ToastOptions, ToolbarButtonDef, WindowHandle } from './types';
+import type { HudItemDef, OverlayDef, PanelDef, PanelInstance, ToastOptions, ToolbarButtonDef, WindowHandle } from './types';
 
 // ============================================================================
 // Windows
@@ -29,6 +30,13 @@ export interface WindowOptions {
 }
 
 let zTop = 100;
+
+/** Current UI zoom (userSettings.uiScale applied as CSS zoom on #ui-root). */
+export function uiScale(): number {
+  const root = document.getElementById('ui-root');
+  const z = root ? Number(root.style.zoom || 1) : 1;
+  return Number.isFinite(z) && z > 0 ? z : 1;
+}
 const openWindows = new Set<WindowHandle>();
 let cascade = 0;
 
@@ -79,8 +87,11 @@ export function createWindow(layer: HTMLElement, opts: WindowOptions): WindowHan
     header.setPointerCapture(e.pointerId);
     const move = (ev: PointerEvent): void => {
       const lr = layer.getBoundingClientRect();
-      const x = Math.min(lr.width - 60, Math.max(-r.width + 80, ev.clientX - lr.left - ox));
-      const y = Math.min(lr.height - 30, Math.max(0, ev.clientY - lr.top - oy));
+      const sc = uiScale();
+      const lw = lr.width / sc;
+      const lh = lr.height / sc;
+      const x = Math.min(lw - 60, Math.max(-r.width / sc + 80, (ev.clientX - lr.left - ox) / sc));
+      const y = Math.min(lh - 30, Math.max(0, (ev.clientY - lr.top - oy) / sc));
       el.style.left = `${x}px`;
       el.style.top = `${y}px`;
     };
@@ -108,9 +119,11 @@ function placeWindow(layer: HTMLElement, el: HTMLElement, pos: NonNullable<Panel
   let x: number;
   let y: number;
   if (typeof pos === 'object') ({ x, y } = pos);
-  else if (pos === 'left') (x = 12 + off), (y = 64 + off);
-  else if (pos === 'right') (x = lw - w - 12 - off), (y = 64 + off);
+  else if (pos === 'left') (x = 12 + off), (y = 56 + off);
+  else if (pos === 'right') (x = lw - w - 12 - off), (y = 56 + off);
   else (x = (lw - w) / 2 + off), (y = Math.max(56, (lh - hgt) / 2 - 40) + off);
+  x = Math.min(x, lw - Math.min(w, lw) - 4);
+  y = Math.min(y, Math.max(48, lh - hgt - 90));
   el.style.left = `${Math.max(0, x)}px`;
   el.style.top = `${Math.max(48, y)}px`;
 }
@@ -130,8 +143,11 @@ export class UiManager implements UiApi {
   private instances = new Map<string, PanelInstance & { lastUpdate: number }>();
   readonly toolbarButtons: ToolbarButtonDef[] = [];
   readonly hudItems: HudItemDef[] = [];
+  readonly overlays: OverlayDef[] = [];
   /** Called when toolbar/HUD registries change (hud.ts re-renders). */
   onRegistryChange: (() => void) | null = null;
+  /** Extra listeners notified (batched) after registry changes — overlay bar, build menu… */
+  readonly registryListeners = new Set<() => void>();
 
   constructor(
     root: HTMLElement,
@@ -144,6 +160,8 @@ export class UiManager implements UiApi {
     root.append(this.windowLayer, this.toastLayer, this.overlayLayer);
 
     setInterval(() => this.tickPanels(), 250);
+    this.applyScale();
+    ctx.bus.on('settings:changed', () => this.applyScale());
     ctx.bus.on('notify', (n) => this.toast({ level: n.level, title: n.title, text: n.text, icon: n.icon, target: n.target }));
     ctx.bus.on('game:ended', () => this.closeAll());
   }
@@ -277,6 +295,30 @@ export class UiManager implements UiApi {
     this.onRegistryChange?.();
   }
 
+  registerOverlay(def: OverlayDef): void {
+    const i = this.overlays.findIndex((o) => o.id === def.id);
+    if (i >= 0) this.overlays.splice(i, 1, def);
+    else this.overlays.push(def);
+    this.overlays.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
+    this.onRegistryChange?.();
+  }
+
+  overlayDef(id: string | null): OverlayDef | undefined {
+    return id ? this.overlays.find((o) => o.id === id) : undefined;
+  }
+
+  /** Apply userSettings.uiScale as CSS zoom on the UI root. */
+  applyScale(): void {
+    const sc = Math.max(0.7, Math.min(1.6, this.ctx.userSettings.uiScale || 1));
+    this.root.style.zoom = String(sc);
+    document.documentElement.style.setProperty('--ui-scale', String(sc));
+  }
+
+  /** All open panel instances (read-only view). */
+  openInstances(): PanelInstance[] {
+    return [...this.instances.values()];
+  }
+
   // ------------------------------------------------------------ toasts
   toast(o: ToastOptions): void {
     const level = o.level ?? 'info';
@@ -284,26 +326,56 @@ export class UiManager implements UiApi {
       'div',
       { class: `ig-toast ig-toast-${level}` },
       h('div', { class: 'ig-toast-icon' }, o.icon ?? ''),
-      h('div', { class: 'ig-toast-content' }, h('div', { class: 'ig-toast-title' }, o.title), o.text ? h('div', { class: 'ig-toast-text' }, o.text) : null),
+      h(
+        'div',
+        { class: 'ig-toast-content' },
+        h('div', { class: 'ig-toast-title' }, o.title),
+        o.text ? h('div', { class: 'ig-toast-text' }, o.text) : null,
+        o.target || o.onClick ? h('div', { class: 'ig-toast-goto' }, 'Pokaż →') : null,
+      ),
+      h('button', { class: 'ig-toast-x', title: 'Zamknij', onclick: (e: MouseEvent) => (e.stopPropagation(), remove()) }, '✕'),
     );
+    let hover = false;
+    el.addEventListener('mouseenter', () => (hover = true));
+    el.addEventListener('mouseleave', () => (hover = false));
     const remove = (): void => {
       el.classList.add('ig-toast-out');
       setTimeout(() => el.remove(), 250);
     };
+    const autoRemove = (): void => {
+      if (hover) setTimeout(autoRemove, 1500);
+      else remove();
+    };
     el.addEventListener('click', () => {
       if (o.onClick) o.onClick();
-      else if (o.target) {
-        this.ctx.bus.emit('select', o.target);
-        const t = o.target;
-        const st = this.ctx.tryState();
-        if (t.kind === 'tile') this.ctx.bus.emit('camera:focus', { x: t.x, y: t.y });
-        else if (st && t.kind === 'building' && st.buildings[t.id]) this.ctx.bus.emit('camera:focus', { x: st.buildings[t.id]!.x, y: st.buildings[t.id]!.y });
-        else if (st && t.kind === 'city' && st.cities[t.id]) this.ctx.bus.emit('camera:focus', { x: st.cities[t.id]!.x, y: st.cities[t.id]!.y });
-      }
+      else if (o.target) focusTarget(this.ctx, o.target);
       remove();
     });
     this.toastLayer.append(el);
     while (this.toastLayer.children.length > 5) this.toastLayer.firstElementChild?.remove();
-    setTimeout(remove, o.durationMs ?? (level === 'danger' ? 8000 : 5000));
+    setTimeout(autoRemove, o.durationMs ?? (level === 'danger' ? 8000 : 5000));
   }
+}
+
+/** Select an entity and move the camera to it (toasts, notifications, lists). */
+export function focusTarget(ctx: GameContext, t: EntityRef, select = true): void {
+  const st = ctx.tryState();
+  if (!st) return;
+  let pos: { x: number; y: number } | null = null;
+  if (t.kind === 'tile') pos = { x: t.x, y: t.y };
+  else if (t.kind === 'building' && st.buildings[t.id]) {
+    const b = st.buildings[t.id]!;
+    pos = { x: b.x + (b.w - 1) / 2, y: b.y + (b.h - 1) / 2 };
+  } else if (t.kind === 'city' && st.cities[t.id]) pos = { x: st.cities[t.id]!.x, y: st.cities[t.id]!.y };
+  else if (t.kind === 'vehicle' && st.vehicles[t.id]) pos = { x: Math.floor(st.vehicles[t.id]!.x), y: Math.floor(st.vehicles[t.id]!.y) };
+  else if (t.kind === 'route' && st.routes[t.id]) {
+    const first = st.routes[t.id]!.stops[0];
+    const b = first ? st.buildings[first.buildingId] : undefined;
+    if (b) pos = { x: b.x, y: b.y };
+  } else if (t.kind === 'company') {
+    const c = st.companies[t.id];
+    if (c?.hq) pos = c.hq;
+  }
+  if (pos) ctx.bus.emit('camera:focus', { x: pos.x, y: pos.y });
+  if (select) ctx.bus.emit('select', t);
 }

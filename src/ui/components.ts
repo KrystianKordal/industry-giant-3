@@ -218,3 +218,180 @@ export function confirmDialog(layer: HTMLElement, title: string, text: string, b
     layer.append(back);
   });
 }
+
+// ============================================================================
+// Extra components (UI agent)
+// ============================================================================
+
+export interface SelectOption<V extends string | number> {
+  value: V;
+  label: string;
+  disabled?: boolean;
+  title?: string;
+}
+
+/** <select> bound to a value. */
+export function select<V extends string | number>(options: SelectOption<V>[], value: V, onChange: (v: V) => void, cls = ''): HTMLSelectElement {
+  const el = h(
+    'select',
+    {
+      class: `ig-select ${cls}`,
+      onchange: () => {
+        const opt = options[el.selectedIndex];
+        if (opt) onChange(opt.value);
+      },
+    },
+    options.map((o) => h('option', { value: String(o.value), selected: o.value === value, disabled: o.disabled, title: o.title ?? '' }, o.label)),
+  );
+  return el;
+}
+
+/** Segmented control (radio buttons look). */
+export function segmented<V extends string | number>(
+  options: { value: V; label: string; title?: string }[],
+  value: V,
+  onChange: (v: V) => void,
+): { el: HTMLElement; set(v: V): void } {
+  const btns = options.map((o) => {
+    const b = h('button', { class: 'ig-seg-btn', type: 'button', onclick: () => pick(o.value) }, o.label);
+    if (o.title) tooltip(b, o.title);
+    return b;
+  });
+  const set = (v: V): void => btns.forEach((b, i) => b.classList.toggle('active', options[i]!.value === v));
+  const pick = (v: V): void => {
+    set(v);
+    onChange(v);
+  };
+  set(value);
+  return { el: h('div', { class: 'ig-seg' }, btns), set };
+}
+
+/** Range slider with live value label. */
+export function slider(
+  o: { min: number; max: number; step: number; value: number; format?: (v: number) => string },
+  onInput: (v: number) => void,
+): { el: HTMLElement; input: HTMLInputElement } {
+  const label = h('span', { class: 'ig-slider-value' }, o.format ? o.format(o.value) : String(o.value));
+  const input = h('input', {
+    type: 'range',
+    min: o.min,
+    max: o.max,
+    step: o.step,
+    value: String(o.value),
+    oninput: () => {
+      const v = Number(input.value);
+      setText(label, o.format ? o.format(v) : String(v));
+      onInput(v);
+    },
+  });
+  return { el: h('div', { class: 'ig-slider' }, input, label), input };
+}
+
+export type Tone = 'pos' | 'neg' | 'warn' | 'dim' | 'info' | 'accent';
+
+export function badge(text: string, tone: Tone = 'dim', title?: string): HTMLElement {
+  const el = h('span', { class: `ig-badge ig-badge-${tone}` }, text);
+  if (title) tooltip(el, title);
+  return el;
+}
+
+export function chip(text: string, o: { active?: boolean; onClick?: () => void; title?: string; color?: string } = {}): HTMLElement {
+  const el = h('button', { class: `ig-chip${o.active ? ' active' : ''}`, type: 'button', onclick: o.onClick }, text);
+  if (o.color) el.style.setProperty('--chip-color', o.color);
+  if (o.title) tooltip(el, o.title);
+  return el;
+}
+
+/** KPI card: title, big value, delta line, optional sparkline canvas slot. */
+export interface KpiHandle {
+  el: HTMLElement;
+  set(value: string, delta?: { text: string; tone: Tone } | null): void;
+  spark: HTMLCanvasElement;
+}
+export function kpiCard(title: string, icon: string, tip?: string): KpiHandle {
+  const value = h('div', { class: 'ig-kpi-value' }, '—');
+  const delta = h('div', { class: 'ig-kpi-delta' }, '');
+  const spark = h('canvas', { class: 'ig-kpi-spark' });
+  const el = h('div', { class: 'ig-kpi' }, h('div', { class: 'ig-kpi-title' }, h('span', null, icon), ' ', title), value, delta, spark);
+  if (tip) tooltip(el, tip);
+  return {
+    el,
+    spark,
+    set(v, d) {
+      setText(value, v);
+      setText(delta, d?.text ?? '');
+      delta.className = `ig-kpi-delta ${d ? `ig-${d.tone}` : ''}`;
+    },
+  };
+}
+
+/** Horizontal meter 0..1 with optional label (quality, satisfaction…). */
+export function meter(value: number, o: { color?: string; label?: string; width?: number } = {}): HTMLElement {
+  const v = Math.max(0, Math.min(1, value));
+  const fill = h('div', { class: 'ig-meter-fill', style: { width: `${v * 100}%` } });
+  if (o.color) fill.style.background = o.color;
+  const el = h('div', { class: 'ig-meter' }, fill);
+  if (o.width) el.style.width = `${o.width}px`;
+  if (o.label) tooltip(el, o.label);
+  return el;
+}
+
+/** Colour for a 0..1 "goodness" value (red → yellow → green). */
+export function goodColor(v: number): string {
+  const t = Math.max(0, Math.min(1, v));
+  const hue = Math.round(t * 120);
+  return `hsl(${hue} 65% 52%)`;
+}
+
+export function emptyState(icon: string, text: string, ...extra: Child[]): HTMLElement {
+  return h('div', { class: 'ig-empty' }, h('div', { class: 'ig-empty-icon' }, icon), h('div', null, text), ...extra);
+}
+
+/** Modal with a text input. Resolves with the text or null. */
+export function promptDialog(layer: HTMLElement, title: string, label: string, initial = '', okLabel = 'OK'): Promise<string | null> {
+  return new Promise((resolve) => {
+    const input = h('input', { type: 'text', class: 'ig-input-wide', value: initial });
+    const close = (v: string | null): void => {
+      back.remove();
+      resolve(v);
+    };
+    const ok = (): void => {
+      const v = input.value.trim();
+      if (v) close(v);
+      else input.focus();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') ok();
+      if (e.key === 'Escape') close(null);
+      e.stopPropagation();
+    });
+    const back = h(
+      'div',
+      { class: 'ig-modal-back', onclick: (e: MouseEvent) => e.target === back && close(null) },
+      h(
+        'div',
+        { class: 'ig-modal' },
+        h('h3', null, title),
+        h('label', { class: 'ig-col' }, h('span', { class: 'ig-muted ig-small' }, label), input),
+        h('div', { class: 'ig-row ig-row-end', style: { marginTop: '12px' } }, button('Anuluj', () => close(null), { variant: 'ghost' }), button(okLabel, ok, { variant: 'primary' })),
+      ),
+    );
+    layer.append(back);
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+  });
+}
+
+/** Small "icon + text" inline element. */
+export function iconText(icon: string, text: Child, cls = ''): HTMLElement {
+  return h('span', { class: `ig-icontext ${cls}` }, h('span', { class: 'ig-icontext-icon' }, icon), h('span', null, text));
+}
+
+/** Link-styled button. */
+export function linkButton(text: string, onClick: () => void, title?: string): HTMLElement {
+  const el = h('button', { class: 'ig-link', type: 'button', onclick: (e: MouseEvent) => (e.stopPropagation(), onClick()) }, text);
+  if (title) tooltip(el, title);
+  return el;
+}

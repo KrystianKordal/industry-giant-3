@@ -57,6 +57,10 @@ export interface EconomyService {
   companyValue(companyId: CompanyId): number;
   /** Buy a building from another company (acquisition). */
   acquireBuilding(companyId: CompanyId, buildingId: BuildingId): ActionResult;
+  /** OPTIONAL: switch a building on/off (UI falls back to toggling Building.enabled + 'building:changed'). */
+  setBuildingEnabled?(buildingId: BuildingId, enabled: boolean): boolean;
+  /** OPTIONAL: install a BuildingDef.upgrades entry (pays; UI falls back to a simple trySpend + push). */
+  upgradeBuilding?(buildingId: BuildingId, upgradeId: string): ActionResult;
 }
 
 // ---------------------------------------------------------------- logistics (logistics agent)
@@ -66,6 +70,29 @@ export interface RouteSpec {
   color?: string;
   stops: RouteStop[];
   priority?: number;
+  /** updateRoute only: pause / resume the route. */
+  enabled?: boolean;
+}
+
+/** Options for LogisticsService.buyVehicle (additive, logistics). */
+export interface BuyVehicleOptions {
+  /** Building where the vehicle appears (depot / station); default: first route stop / any own station. */
+  depotId?: BuildingId;
+  /** Train wagons (clamped to VehicleDef.wagons; each wagon costs costPerWagon). */
+  wagons?: number;
+}
+
+/** A missing producer → consumer connection (advisor / AI hints). */
+export interface RouteSuggestion {
+  fromBuilding: BuildingId;
+  toBuilding: BuildingId;
+  productId: ProductId;
+  /** Straight-line distance in tiles. */
+  distance: number;
+  /** Already reachable by road. */
+  connected: boolean;
+  /** Higher = more urgent. */
+  score: number;
 }
 
 export interface LogisticsService {
@@ -83,11 +110,13 @@ export interface LogisticsService {
   createRoute(companyId: CompanyId, spec: RouteSpec): ActionResult<{ id: RouteId }>;
   updateRoute(routeId: RouteId, spec: Partial<RouteSpec>): boolean;
   removeRoute(routeId: RouteId): boolean;
-  buyVehicle(companyId: CompanyId, typeId: string, routeId: RouteId | null): ActionResult<{ id: VehicleId }>;
+  buyVehicle(companyId: CompanyId, typeId: string, routeId: RouteId | null, opts?: BuyVehicleOptions): ActionResult<{ id: VehicleId }>;
   sellVehicle(vehicleId: VehicleId): ActionResult;
   assignVehicle(vehicleId: VehicleId, routeId: RouteId | null): boolean;
   /** Build road (if needed) + route + vehicle between producer and consumer. */
   autoConnect(companyId: CompanyId, fromBuilding: BuildingId, toBuilding: BuildingId, mode: TransportMode): ActionResult<{ routeId: RouteId }>;
+  /** Unserved producer → consumer pairs of a company, best first (advisor / AI). */
+  suggestRoutes(companyId: CompanyId, limit?: number): RouteSuggestion[];
 }
 
 // ---------------------------------------------------------------- world (world agent)
@@ -128,7 +157,16 @@ export interface AudioService {
   applySettings(): void;
 }
 
+// ---------------------------------------------------------------- ai (ai/game/audio agent)
+export interface AiService {
+  /** Asking price for another company's building (null = not for sale / unknown). */
+  buildingPrice(buyerId: CompanyId, buildingId: BuildingId): number | null;
+  /** Buy a rival's building (takeover). Pays seller, transfers ownership, emits building:changed. */
+  buyBuilding(buyerId: CompanyId, buildingId: BuildingId): ActionResult;
+}
+
 export interface Services {
+  ai: AiService;
   economy: EconomyService;
   logistics: LogisticsService;
   world: WorldService;
@@ -206,6 +244,7 @@ export function createDefaultServices(ctx: GameContext): Services {
     sellVehicle: () => NI,
     assignVehicle: () => false,
     autoConnect: () => NI,
+    suggestRoutes: () => [],
   };
 
   const world: WorldService = {
@@ -242,5 +281,7 @@ export function createDefaultServices(ctx: GameContext): Services {
   const game: GameService = { scenarios: () => [], currentHint: () => null };
   const audio: AudioService = { unlock: () => {}, play: () => {}, setMusic: () => {}, applySettings: () => {} };
 
-  return { economy, logistics, world, game, audio };
+  const ai: AiService = { buildingPrice: () => null, buyBuilding: () => NI };
+
+  return { economy, logistics, world, game, audio, ai };
 }

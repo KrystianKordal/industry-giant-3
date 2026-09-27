@@ -5,6 +5,9 @@
  *   const c = h('canvas'); lineChart(c, [{ name: 'Gotówka', values, color: '#e8b04a' }], { height: 160 });
  */
 
+import { h } from './dom';
+import { hideTooltip, tooltip } from './tooltip';
+
 /** Resolve CSS variables like 'var(--accent)' to a color string. */
 export function cssColor(c: string, el: Element = document.documentElement): string {
   const m = /^var\((--[^)]+)\)$/.exec(c.trim());
@@ -132,6 +135,19 @@ export function lineChart(canvas: HTMLCanvasElement, series: Series[], o: LineCh
     g.lineWidth = 1.75;
     g.stroke();
   }
+  if (min < 0 && max > 0) {
+    g.strokeStyle = 'rgba(255,255,255,0.28)';
+    g.beginPath();
+    g.moveTo(padL, Y(0));
+    g.lineTo(w - padR, Y(0));
+    g.stroke();
+  }
+  hoverState.set(canvas, { series, labels: o.labels, fmt, X, n, padL, padR, w, hgt });
+  if (!canvas.dataset.hover) {
+    canvas.dataset.hover = '1';
+    canvas.addEventListener('mousemove', (e) => chartHover(canvas, e));
+    canvas.addEventListener('mouseleave', hideTooltip);
+  }
   if (o.legend !== false) {
     let lx = padL;
     g.textAlign = 'left';
@@ -144,4 +160,88 @@ export function lineChart(canvas: HTMLCanvasElement, series: Series[], o: LineCh
       lx += 22 + g.measureText(s.name).width;
     }
   }
+}
+
+// ---------------------------------------------------------------- hover
+interface HoverInfo {
+  series: Series[];
+  labels?: readonly string[];
+  fmt(v: number): string;
+  X(i: number): number;
+  n: number;
+  padL: number;
+  padR: number;
+  w: number;
+  hgt: number;
+}
+const hoverState = new WeakMap<HTMLCanvasElement, HoverInfo>();
+const hoverTip = new WeakMap<HTMLCanvasElement, { idx: number }>();
+
+function chartHover(canvas: HTMLCanvasElement, e: MouseEvent): void {
+  const info = hoverState.get(canvas);
+  if (!info || info.n < 1) return;
+  const r = canvas.getBoundingClientRect();
+  const scale = r.width / info.w || 1;
+  const x = (e.clientX - r.left) / scale;
+  const t = (x - info.padL) / Math.max(1, info.w - info.padL - info.padR);
+  const idx = Math.max(0, Math.min(info.n - 1, Math.round(t * (info.n - 1))));
+  let st = hoverTip.get(canvas);
+  if (!st) {
+    st = { idx: -1 };
+    hoverTip.set(canvas, st);
+    tooltip(canvas, () => {
+      const i = hoverTip.get(canvas)?.idx ?? 0;
+      const inf = hoverState.get(canvas);
+      if (!inf) return '';
+      const lines = inf.series
+        .filter((s) => s.values.length > 0)
+        .map((s) => {
+          const off = inf.n - s.values.length;
+          const v = s.values[i - off];
+          return `${s.name}: ${v === undefined ? '—' : inf.fmt(v)}`;
+        });
+      return `${inf.labels?.[i] ?? ''}\n${lines.join('\n')}`.trim();
+    });
+  }
+  if (st.idx !== idx) {
+    st.idx = idx;
+    canvas.dispatchEvent(new MouseEvent('mouseenter', { clientX: e.clientX, clientY: e.clientY }));
+  }
+}
+
+// ---------------------------------------------------------------- DOM bar list
+export interface BarItem {
+  label: string;
+  value: number;
+  color?: string;
+  title?: string;
+}
+
+/**
+ * Diverging horizontal bars (DOM): positive values grow right (green),
+ * negative grow left (red). Good for P&L breakdowns.
+ */
+export function barList(items: BarItem[], format: (v: number) => string): HTMLElement {
+  const maxAbs = Math.max(1, ...items.map((i) => Math.abs(i.value)));
+  const hasNeg = items.some((i) => i.value < 0);
+  const hasPos = items.some((i) => i.value > 0);
+  return h(
+    'div',
+    { class: 'ig-bars' },
+    items.map((it) => {
+      const pct = (Math.abs(it.value) / maxAbs) * 100;
+      const color = it.color ?? (it.value >= 0 ? 'var(--money-pos)' : 'var(--money-neg)');
+      const bar = h('div', { class: 'ig-bar-fill', style: { width: `${pct}%`, background: color } });
+      const track = h('div', { class: `ig-bar-track ${it.value < 0 ? 'neg' : 'pos'}` }, bar);
+      const row = h(
+        'div',
+        { class: `ig-bar-row ${hasNeg && hasPos ? 'diverging' : ''}` },
+        h('div', { class: 'ig-bar-label' }, it.label),
+        track,
+        h('div', { class: `ig-bar-value ${it.value < 0 ? 'ig-neg' : 'ig-pos'}` }, format(it.value)),
+      );
+      if (it.title) tooltip(row, it.title);
+      return row;
+    }),
+  );
 }

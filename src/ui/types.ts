@@ -3,7 +3,7 @@
  * may register panels/buttons through ctx.ui.
  */
 import type { GameContext } from '../core/context';
-import type { EntityRef, NotificationLevel } from '../core/types';
+import type { EntityRef, GameState, NotificationLevel } from '../core/types';
 
 export interface WindowHandle {
   /** Root element of the window. */
@@ -95,4 +95,34 @@ export interface ToastOptions {
   durationMs?: number;
   target?: EntityRef | null;
   onClick?: () => void;
+}
+
+export interface OverlayLegendItem {
+  color: string;
+  label: string;
+}
+
+/**
+ * Map overlay description (heatmap). The render module draws it (layer checks
+ * ctx.renderer.overlay === id); the UI shows a toggle button, a legend and
+ * optionally tints the minimap. Register with ctx.ui.registerOverlay(def).
+ */
+export interface OverlayDef {
+  id: string;
+  name: string;
+  icon: string;
+  description?: string;
+  /** Sort order in the overlay bar (default 100). */
+  order?: number;
+  /** Hotkey hint shown in the tooltip (registration is separate). */
+  hotkey?: string;
+  /** Discrete legend entries… */
+  legend?: OverlayLegendItem[];
+  /** …or a continuous gradient (CSS colors, low → high). */
+  gradient?: { stops: string[]; min: string; max: string };
+  /**
+   * Optional per-tile minimap tint: return [r,g,b,a] (0..255) or null for none.
+   * Called for every tile about once per second while the overlay is active — keep it cheap.
+   */
+  minimapColor?(state: GameState, idx: number, ctx: GameContext): [number, number, number, number] | null;
 }

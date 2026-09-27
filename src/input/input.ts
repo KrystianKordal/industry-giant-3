@@ -91,14 +91,27 @@ export class InputManager implements InputApi {
   isKeyDown(code: string): boolean {
     return this.keys.has(code);
   }
+  /** Last pointer position over the canvas (CSS px) — for UI cards following the cursor. */
+  get pointer(): { sx: number; sy: number; inside: boolean } {
+    return this.lastPointer;
+  }
+  /** Registered tools (read-only). */
+  toolList(): readonly ToolDef[] {
+    return [...this.tools.values()];
+  }
 
-  /** Esc / right-click cancel semantics. */
-  cancel(): void {
+  /** Esc / right-click cancel semantics. `fromEscape` = keyboard Esc (may close windows / open the game menu). */
+  cancel(fromEscape = false): void {
     const tool = this.activeTool;
     const handled = tool?.cancel?.(this.ctx);
     if (handled) return;
     if (this._active !== DEFAULT_TOOL) this.setTool(null);
-    else this.ctx.ui.closeTopWindow();
+    else if (!fromEscape) this.ctx.bus.emit('select', { kind: 'none' });
+    else if (!this.ctx.ui.closeTopWindow()) {
+      // nothing to close → deselect, then open the pause/game menu
+      this.ctx.bus.emit('select', { kind: 'none' });
+      this.ctx.ui.openPanel('gameMenu');
+    }
   }
 
   // ------------------------------------------------------------ pointer
@@ -190,7 +203,7 @@ export class InputManager implements InputApi {
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return;
     this.keys.add(e.code);
     if (e.key === 'Escape' && this.ctx.hasGame) {
-      this.cancel();
+      this.cancel(true);
       e.preventDefault();
       return;
     }

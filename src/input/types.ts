@@ -47,8 +47,32 @@ export interface ToolDef {
   cancel?(ctx: GameContext): boolean | void;
   /** Draw preview in world space (called by the 'tool-preview' layer, z=90). */
   drawPreview?(rc: RenderContext): void;
-  /** Short status/help text shown by the UI while active. */
+  /** Short status/help text shown by the UI while active (bottom hint bar). */
   hint?(ctx: GameContext): string;
+  /**
+   * Rich info card shown next to the cursor while the tool is active (polled ~8×/s).
+   * Return null to hide. Used by build/blueprint tools; logistics tools may use it for road cost etc.
+   */
+  status?(ctx: GameContext): ToolStatus | null;
+}
+
+export interface ToolStatusLine {
+  label: string;
+  value: string;
+  /** Colour hint for the value. */
+  tone?: 'pos' | 'neg' | 'warn' | 'dim';
+}
+
+export interface ToolStatus {
+  icon?: string;
+  title: string;
+  /** true = green header (placement OK), false = red, undefined = neutral. */
+  ok?: boolean;
+  /** Main message (e.g. invalid placement reason). */
+  message?: string;
+  lines?: ToolStatusLine[];
+  /** Small footer (key hints). */
+  footer?: string;
 }
 
 export interface HotkeyDef {

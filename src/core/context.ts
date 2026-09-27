@@ -9,7 +9,7 @@
 import type { HotkeyDef, ToolDef } from '../input/types';
 import type { Camera } from '../render/camera';
 import type { LayerDef } from '../render/types';
-import type { HudItemDef, PanelDef, ToastOptions, ToolbarButtonDef } from '../ui/types';
+import type { HudItemDef, OverlayDef, PanelDef, ToastOptions, ToolbarButtonDef } from '../ui/types';
 import { registry as globalRegistry, type DataRegistry } from '../data/registry';
 import { createBus, type GameBus } from './bus';
 import { createDefaultServices, type Services } from './services';
@@ -54,6 +54,8 @@ export interface UiApi {
   registerToolbarButton(def: ToolbarButtonDef): void;
   registerHudItem(def: HudItemDef): void;
   toast(opts: ToastOptions): void;
+  /** Describe a map overlay (name, icon, legend) for the overlay bar/minimap. Same id = replace. */
+  registerOverlay(def: OverlayDef): void;
 }
 
 export interface InputApi {
@@ -158,6 +160,7 @@ function headlessUi(): UiApi {
     registerToolbarButton: () => {},
     registerHudItem: () => {},
     toast: () => {},
+    registerOverlay: () => {},
   };
 }
 

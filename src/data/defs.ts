@@ -82,6 +82,11 @@ export interface ProductDef {
   color?: string;
   requiresTech?: TechId;
   description?: string;
+  /**
+   * City demand multiplier per era index (0..4), e.g. coal for heating fades out
+   * in later eras. Missing = 1 for every era. Used by economy/demand.ts.
+   */
+  eraDemand?: number[];
 }
 
 // ============================================================================
@@ -184,6 +189,20 @@ export interface BuildingDef {
   researchPoints?: number;
   upgrades?: BuildingUpgradeDef[];
   requiresTech?: TechId;
+  /**
+   * Extra modifier targets / grouping tags (e.g. 'farm', 'mine', 'food',
+   * 'textile', 'heavy', 'electronics', 'green'). Company modifiers
+   * "<effect>.<tag>" apply to all buildings carrying the tag.
+   */
+  tags?: string[];
+  /** Shops: product categories it sells (informative; `sells` is the authoritative list). */
+  sellsCategories?: ProductCategory[];
+  /** Shops / export: max units sold per day at efficiency 1. */
+  salesPerDay?: number;
+  /** Stations / hubs: units per day that can be loaded+unloaded (logistics hint). */
+  loadRate?: number;
+  /** Eco-friendly building (green energy, recycling): improves the company eco rating. */
+  green?: boolean;
   /** Base draw color for the placeholder renderer. */
   color?: string;
   description?: string;
