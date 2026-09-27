@@ -15,14 +15,21 @@
  *  2. Bankruptcy only through clearly bad play: the scripted player (no loans
  *     unless cash < 5 k, keeps ~3 months of costs in reserve) never goes
  *     bankrupt on any difficulty.
- *  3. By year ~12–15 a player running 5 chains out-earns the AVERAGE rival
- *     (normal ≈ 1.2–1.6×, easy ≥ 2×); on hard the best rival out-earns such
- *     a player (hard = competitive).
- *  4. Rivals are never passive: a new building at least every ~2.5 years
- *     (growth slot every AI DIFFICULTY.growthDays: easy 1260 / normal 900 /
- *     hard 540 days), they repair, relocate depleted mines, re-link stuck
- *     vehicles and scrap chains that cannot be completed. No rival goes
- *     bankrupt in the first years (hard: occasional bankruptcy after 4+ years).
+ *  3. By year ~12–15 a player running 5 chains out-earns the AVERAGE rival:
+ *     company value 1.5–1.9× the average rival on normal (3.0–3.2 M vs 1.7–2.0 M zł
+ *     at year 15), monthly profit 1.1–1.3×; easy 1.7–2× profit, 3× value; on
+ *     hard the rivals earn ~2× such a player (hard = competitive). Before tuning a normal
+ *     rival (2 base projects, +1 every 720 days, no efficiency handicap) ran
+ *     7–9 chains by year 15 and matched or beat the 5-chain player.
+ *     AI knobs (ai/profiles.ts DIFFICULTY): base projects easy 1 / normal 1 /
+ *     hard 3, growthDays 900 / 800 / 540, efficiency 0.8 / 0.85 / 1.
+ *  4. Rivals are never passive: a new building or an expansion at least every
+ *     ~2.5 years (measured max gap: 330–890 days; was 1 400–7 000 days when a
+ *     half-built chain blocked every new project forever), they repair,
+ *     relocate depleted mines, re-link stuck vehicles, scrap chains that
+ *     cannot be completed and expand their busiest building ~yearly. No rival
+ *     went bankrupt in the 15-year matrix (hard: occasional bankruptcy after
+ *     4+ years is acceptable).
  *  5. Eras bring new, more lucrative products: value demanded per 10 k
  *     inhabitants grows from ~18 k zł/month (bread) to 40–60 k (TVs,
  *     computers) and ~115 k (smartphones), at 5–20× the capital of a bread
@@ -47,6 +54,16 @@
  *     ~1–5 % of profit — a nudge toward filters / green tech, not a wall.
  * 10. Deposits: one mine site lasts ~8–12 years (DEPOSITS amounts ×1.8);
  *     depletion notifies the player, AI relocates the mine.
+ * 11. Research: BASE_RESEARCH_POINTS 25 (was 10), 25 zł per point (was 40):
+ *     first techs in ~2–3 months with a design office or ~1 000 zł/month,
+ *     ~6 months with nothing (was 18). Era techs cost more (1 500 / 3 200 /
+ *     6 500 / 14 000) because researching them moves the WORLD era (and wages),
+ *     and can start at most ERA_EARLY_YEARS (20) before the era's calendar year —
+ *     before that a rich player dragged the world into the digital era by 1880.
+ *     Reaching an era grants every company that era's gateway `era_*` tech.
+ * 12. Trains beat trucks on long hauls: steam 40/wagon at 14 tiles/day, a default
+ *     consist of ceil((min+max)/2) wagons (steam 4 → 160 units ≈ 690 units/month
+ *     over 40 tiles vs ~35 for a horse cart); stations feed their catchment daily.
  *
  * Performance budget (256×256, 12 cities, 3 rivals, ~300 vehicles): < 4 ms
  * per sim tick on average, no single tick > 16 ms (AI think ≈ 2–4 ms, capped

@@ -91,6 +91,12 @@ describe('research', () => {
     let era = '';
     h.ctx.bus.on('era:changed', ({ eraId }) => (era = eraId));
     eco.setResearchBudget!(p.id, 40_000);
+    for (let i = 0; i < 12; i++) month(h);
+    // era techs open at most ERA_EARLY_YEARS (20) before the era's calendar start (1900)
+    expect(p.research.unlocked.bessemer_process).toBeDefined();
+    expect(p.research.unlocked.era_electric).toBeUndefined();
+    expect(eco.startResearch(p.id, 'era_electric').ok).toBe(false);
+    h.state.time.year = 1880;
     for (let i = 0; i < 24 && !p.research.unlocked.era_electric; i++) month(h);
     expect(p.research.unlocked.railways).toBeDefined();
     expect(eco.isUnlocked(p.id, 'building', 'train_station')).toBe(true);

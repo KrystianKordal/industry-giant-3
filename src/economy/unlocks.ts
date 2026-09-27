@@ -12,6 +12,7 @@ import type { UnlockKind } from '../core/services';
 import type { Company, GameState, TechId } from '../core/types';
 import type { TechDef } from '../data/defs';
 import type { DataRegistry } from '../data/registry';
+import { ERA_EARLY_YEARS } from './constants';
 
 export function hasTech(company: Company | undefined, techId: TechId): boolean {
   return !!company && company.research.unlocked[techId] !== undefined;
@@ -76,6 +77,14 @@ export function researchBlocker(state: GameState, data: DataRegistry, company: C
   const missing = tech.prereqs.filter((p) => !hasTech(company, p));
   if (missing.length) return `Wymaga: ${missing.map((p) => data.techs[p]?.name ?? p).join(', ')}`;
   if (data.eraIndex(tech.era) > companyEraIndex(state, data, company)) return `Dostępne w epoce: ${data.eras[tech.era]?.name ?? tech.era}`;
+  // An era technology can be researched at most ERA_EARLY_YEARS before the era's calendar
+  // start: research lets you get there earlier, but a rich company can no longer drag the
+  // whole world (and its wages) from 1850 into the digital era within 30 years.
+  for (const e of tech.effects) {
+    if (e.kind !== 'era') continue;
+    const from = (data.eras[e.id]?.startYear ?? 0) - ERA_EARLY_YEARS;
+    if (state.time.year < from) return `Dostępne od roku ${from}`;
+  }
   return null;
 }
 

@@ -45,8 +45,13 @@ export const DEFAULT_CATCHMENT = 4;
 /** Max straight-line range between drone ports (tiles). */
 export const DRONE_RANGE = 40;
 
-/** Max vehicle path searches per sim tick (the rest retry next tick). */
-export const PATH_BUDGET_PER_TICK = 24;
+/**
+ * Max vehicle leg plannings per sim tick (the rest retry next tick). Charged per call,
+ * cache hit or not (determinism after load), so it must comfortably exceed the number
+ * of vehicles starting a leg in one tick — at 24 vehicles late in the id order starved
+ * for years in 300-vehicle games.
+ */
+export const PATH_BUDGET_PER_TICK = 150;
 /** Max nodes expanded by one vehicle path search. */
 export const MAX_SEARCH_NODES = 200_000;
 /** Margin (tiles) of the search box when planning a new road/rail. */

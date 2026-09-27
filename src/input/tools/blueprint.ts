@@ -201,9 +201,23 @@ export function createBlueprintTool(ctx: GameContext): ToolDef {
     for (const [k, tiles] of groups) {
       const [kind, lvl] = k.split(':') as ['road' | 'rail', string];
       for (const chain of chainTiles(tiles, W)) {
-        const res = ctx.services.logistics.buildNetwork(pid, kind, chain, Number(lvl));
-        if (res.ok) cost += res.cost;
-        else netFail++;
+        const L = ctx.services.logistics;
+        // saved level may not be available (older era) → best available; one blocked tile must
+        // not drop the whole piece → fall back to tile-by-tile (single-tile stubs included)
+        let res = L.buildNetwork(pid, kind, chain, Number(lvl));
+        if (!res.ok) res = L.buildNetwork(pid, kind, chain);
+        if (res.ok) {
+          cost += res.cost;
+          continue;
+        }
+        let failed = 0;
+        for (const t of chain) {
+          if ((kind === 'road' ? st.network.road[t] : st.network.rail[t])) continue;
+          const r1 = L.buildNetwork(pid, kind, [t]);
+          if (r1.ok) cost += r1.cost;
+          else failed++;
+        }
+        if (failed) netFail++;
       }
     }
     if (netFail) errors.push(`Sieć: nie zbudowano ${plural(netFail, 'odcinka', 'odcinków', 'odcinków')} (teren zajęty lub brak środków)`);

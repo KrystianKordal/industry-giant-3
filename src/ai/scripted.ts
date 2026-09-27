@@ -218,6 +218,17 @@ function maintain(ctx: GameContext, p: ScriptedPlayer, c: Company): void {
     if (b.owner !== c.id || b.condition >= 0.5 || b.constructionProgress < 1) continue;
     ctx.services.economy.repairBuilding?.(b.id);
   }
+  // routes that moved nothing for a year: sell their vehicles (the link is re-created if needed)
+  for (const ch of p.chains)
+    for (let i = 1; i < ch.spec.length; i++) {
+      const r = ch.routes[i] ? state.routes[ch.routes[i]!] : undefined;
+      if (!r || state.time.totalDays - r.createdDay < 400) continue;
+      const h = r.stats.throughputHistory;
+      if (h.length < 12 || h.slice(-12).some((u) => u > 0)) continue;
+      for (const vid of [...r.vehicleIds]) ctx.services.logistics.sellVehicle(vid);
+      ctx.services.logistics.removeRoute(r.id);
+      ch.routes[i] = 0;
+    }
   // sell vehicles that could not find a path for ~a month (3 checks in a row)
   const seen: Record<number, number> = {};
   for (const v of Object.values(state.vehicles)) {

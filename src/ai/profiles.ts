@@ -83,8 +83,8 @@ export interface DifficultyDef {
 }
 
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
-  easy: { thinkDays: 20, projects: 1, noise: 0.35, startCash: 0.7, maxChainBuildings: 6, balanceChains: false, maxVehiclesPerLink: 2, growthDays: 1400, efficiency: 0.85 },
-  normal: { thinkDays: 12, projects: 2, noise: 0.15, startCash: 1, maxChainBuildings: 9, balanceChains: true, maxVehiclesPerLink: 3, growthDays: 1000, efficiency: 0.92 },
+  easy: { thinkDays: 20, projects: 1, noise: 0.35, startCash: 0.7, maxChainBuildings: 6, balanceChains: false, maxVehiclesPerLink: 2, growthDays: 900, efficiency: 0.8 },
+  normal: { thinkDays: 12, projects: 1, noise: 0.15, startCash: 1, maxChainBuildings: 9, balanceChains: true, maxVehiclesPerLink: 3, growthDays: 800, efficiency: 0.85 },
   hard: { thinkDays: 7, projects: 3, noise: 0.05, startCash: 1.25, maxChainBuildings: 12, balanceChains: true, maxVehiclesPerLink: 5, growthDays: 540, efficiency: 1 },
 };
 

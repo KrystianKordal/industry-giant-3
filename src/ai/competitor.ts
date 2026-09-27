@@ -156,6 +156,7 @@ export function think(ctx: GameContext, company: Company): ThinkResult {
     manageFinances(ctx, company, res);
     manageResearch(ctx, company, res);
     if (company.cash > 0) considerNewProject(ctx, company, r, res);
+    investInCapacity(ctx, company, res);
     handleDistress(ctx, company, res);
   } finally {
     saveRng(ai, r);
@@ -215,6 +216,26 @@ function fixStuckVehicles(ctx: GameContext, c: Company, res: ThinkResult): void 
   }
   // forget vehicles that no longer exist
   for (const k of Object.keys(m)) if (k.startsWith('np:') && !state.vehicles[Number(k.slice(3))]) delete m[k];
+  // Dead routes (nothing delivered for a year — chain broken, source gone, consumer demolished):
+  // sell the vehicles and drop the route; the plan link is re-created if still wanted.
+  for (const route of Object.values(state.routes)) {
+    if (route.owner !== c.id || today - route.createdDay < 400) continue;
+    const h = route.stats.throughputHistory;
+    if (h.length < 12 || h.slice(-12).some((u) => u > 0)) continue;
+    for (const vid of [...route.vehicleIds]) safe(() => ctx.services.logistics.sellVehicle(vid), { ok: false as const, reason: NI });
+    safe(() => ctx.services.logistics.removeRoute(route.id), false);
+    res.actions++;
+    for (const plan of c.ai!.plans) {
+      const routes = Array.isArray(plan.params.routes) ? (plan.params.routes as number[]) : [];
+      const linked = Array.isArray(plan.params.linked) ? (plan.params.linked as number[]) : [];
+      routes.forEach((id, i) => {
+        if (id === route.id) {
+          routes[i] = 0;
+          if (i > 0) linked[i] = 0;
+        }
+      });
+    }
+  }
 }
 
 function maintainPlans(ctx: GameContext, c: Company, res: ThinkResult): void {
@@ -669,6 +690,43 @@ function manageResearch(ctx: GameContext, c: Company, res: ThinkResult): void {
 }
 
 // ---------------------------------------------------------------- expansion
+/**
+ * Between new chains (growth slots come every DIFFICULTY.growthDays) a rich rival keeps
+ * investing: about once a year it expands (upgrade 'expand') the busiest building of its
+ * chains — the player sees rivals grow instead of sitting on cash for years.
+ */
+function investInCapacity(ctx: GameContext, c: Company, res: ThinkResult): void {
+  const up = ctx.services.economy.upgradeBuilding;
+  if (!up) return;
+  const state = ctx.state;
+  const m = mem(c.ai!);
+  if (state.time.totalDays - num(m.lastInvest, 0) < 330) return;
+  let best: Building | null = null;
+  let bestU = 0.8;
+  for (const plan of c.ai!.plans) {
+    if (plan.status !== 'active') continue;
+    const ids = Array.isArray(plan.params.ids) ? (plan.params.ids as number[]) : [];
+    for (const id of ids) {
+      const b = id ? state.buildings[id] : undefined;
+      if (!b || b.upgrades.includes('expand')) continue;
+      const h = b.stats.utilizationHistory.slice(-3);
+      const u = h.length ? h.reduce((s, v) => s + v, 0) / h.length : 0;
+      if (u > bestU) {
+        bestU = u;
+        best = b;
+      }
+    }
+  }
+  if (!best) return;
+  const cost = ctx.data.buildings[best.typeId]?.upgrades?.find((u) => u.id === 'expand')?.cost ?? Infinity;
+  if (c.cash < cost * 3 + 20000) return;
+  const r = safe(() => up(best!.id, 'expand'), { ok: false as const, reason: NI });
+  if (r.ok) {
+    m.lastInvest = state.time.totalDays;
+    res.actions++;
+  }
+}
+
 function activeProjects(ai: AIState): number {
   return ai.plans.filter((p) => p.kind === 'chain' && (p.status === 'pending' || p.status === 'active')).length;
 }
@@ -715,6 +773,7 @@ function considerNewProject(ctx: GameContext, c: Company, r: Rng, res: ThinkResu
   mem(ai).planSeq = plan.id;
   if (!ai.focusProducts.includes(best.productId)) ai.focusProducts.push(best.productId);
   ai.plans.push(plan);
+  mem(ai).lastInvest = state.time.totalDays;
   res.actions++;
   // Start building right away.
   const ids = arr(plan, 'ids', spec.length);

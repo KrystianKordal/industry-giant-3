@@ -28,6 +28,8 @@ export const GRID_SELL_PRICE = 30;
 export const BASE_RESEARCH_POINTS = 25;
 /** Research budget: zł per research point (was 40). */
 export const ZL_PER_RESEARCH_POINT = 25;
+/** How many years before an era's calendar start its `era_*` technology can be researched. */
+export const ERA_EARLY_YEARS = 20;
 
 /** Upkeep paid by a disabled (switched off) building, as a fraction. */
 export const DISABLED_UPKEEP = 0.3;
