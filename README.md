@@ -1,5 +1,7 @@
 # Industry Giant 3
 
+**▶ Zagraj online: https://krystiankordal.github.io/industry-giant-3/**
+
 Przeglądarkowy tycoon przemysłowy inspirowany klasycznym *Industry Giant 2*. Budujesz imperium
 od farmy zboża w 1850 roku po smartfony i recykling w erze cyfrowej: zakładasz farmy, kopalnie,
 fabryki i sklepy, łączysz je drogami, torami i szlakami wodnymi, obsługujesz żywe miasta i
