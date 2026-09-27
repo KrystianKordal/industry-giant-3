@@ -273,7 +273,7 @@ body.ig-minimap-hidden .ig-toolbar {
   position: absolute;
   min-width: 220px;
   max-width: calc(100vw - 20px);
-  max-height: calc(100vh - var(--topbar-h) - 20px);
+  max-height: calc(100vh - var(--topbar-h) - var(--toolbar-h) - 50px);
   display: flex;
   flex-direction: column;
   background: var(--panel);
@@ -2303,7 +2303,14 @@ kbd {
     display: none;
   }
   .ig-toolbar-btn {
-    min-width: 38px;
+    min-width: 32px;
+    padding: 3px 2px;
+  }
+  .ig-toolbar-icon {
+    font-size: 17px;
+  }
+  .ig-toolbar-group {
+    padding: 0 2px;
   }
   .ig-company-name {
     max-width: 120px;
@@ -2352,4 +2359,8 @@ kbd {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
+}
+.ig-tech.queued {
+  border-style: dashed;
+  border-color: var(--accent-2);
 }

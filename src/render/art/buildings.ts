@@ -65,7 +65,7 @@ export function artKindOf(def: BuildingDef, data: Registry): ArtKind {
       else k = 'mine';
       break;
     case 'factory':
-      k = has(id, 'data', 'server') ? 'datacenter' : 'factory';
+      k = has(id, 'data_center', 'datacenter', 'software', 'server_farm') ? 'datacenter' : 'factory';
       break;
     case 'shop':
       k = 'shop';
@@ -498,7 +498,7 @@ const factory: Drawer = (g, x, y, w, h, b, def, o) => {
   g.fillStyle = '#4a4e56';
   for (let i = 0; i < 3; i++) g.fillRect(hx + 4 + i * 7, hy + hh - 1, 5, 2.5);
   // chimneys
-  const n = def.pollution >= 4 ? 2 : 1;
+  const n = def.pollution >= 4 ? 2 : def.pollution > 0 ? 1 : 0;
   for (let i = 0; i < n; i++) chimney(g, x + w * 0.82 + i * -7, y + h * 0.66 + i * 4, Math.max(2.4, T * 0.09), o, def.pollution >= 6);
   // spinning roof vent
   if (detail && o.ppt >= 24) {

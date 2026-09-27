@@ -69,6 +69,15 @@ export function renderResearch(root: HTMLElement, ctx: GameContext): () => void 
     update();
   };
 
+  const queue = (t: TechDef): void => {
+    const res = ctx.services.economy.queueResearch?.(ctx.state.playerCompanyId, t.id);
+    if (!res) return;
+    if (res.ok) ctx.ui.toast({ level: 'info', icon: t.icon, title: `Dodano do kolejki badań: ${t.name}`, durationMs: 2500 });
+    else ctx.ui.toast({ level: 'warning', icon: '🔬', title: 'Nie można dodać do kolejki', text: res.reason });
+    sig = '';
+    update();
+  };
+
   const update = (): void => {
     if (!ctx.hasGame) return;
     const c = ctx.state.companies[ctx.state.playerCompanyId];
@@ -83,6 +92,8 @@ export function renderResearch(root: HTMLElement, ctx: GameContext): () => void 
         topInfo,
         h('div', { class: 'ig-row' }, h('span', { class: 'ig-research-icon' }, cur.icon), h('div', { class: 'ig-grow' }, h('div', { class: 'ig-strong' }, `Badane: ${cur.name}`), bar.el)),
         h('div', { class: 'ig-muted ig-small' }, `${formatNumber(r.pointsPerMonth, 1)} pkt/mies. · ${Number.isFinite(eta) ? `ukończenie za ~${eta} mies.` : 'brak postępu — zbuduj laboratorium lub zwiększ budżet'}`),
+        r.queue.length ? h('div', { class: 'ig-small' }, `Kolejka: ${r.queue.map((q) => `${ctx.data.techs[q]?.icon ?? ''} ${ctx.data.techs[q]?.name ?? q}`).join(' → ')}`) : null,
+        h('div', { class: 'ig-muted ig-small' }, 'Kliknij dostępną technologię, aby ją badać; Shift+klik (lub klik w zablokowaną) dodaje do kolejki.'),
       );
     } else {
       setChildren(
@@ -94,7 +105,7 @@ export function renderResearch(root: HTMLElement, ctx: GameContext): () => void 
     if (!budgetSlot.firstChild) budgetSlot.append(budgetRow());
     countBadge.textContent = `odkryto ${Object.keys(r.unlocked).length}/${ctx.data.techList().length}`;
     // tree (only when something changed)
-    const s = `${Object.keys(r.unlocked).length}|${r.current}|${ctx.data.version}`;
+    const s = `${Object.keys(r.unlocked).length}|${r.current}|${r.queue.join(',')}|${ctx.data.version}`;
     if (s === sig) return;
     sig = s;
     const eras = ctx.data.eraList();
@@ -113,7 +124,14 @@ export function renderResearch(root: HTMLElement, ctx: GameContext): () => void 
             const stt = stateOf(t);
             const card = h(
               'button',
-              { class: `ig-tech ${stt}`, onclick: () => (stt === 'available' ? start(t) : undefined) },
+              {
+                class: `ig-tech ${stt}${c.research.queue.includes(t.id) ? ' queued' : ''}`,
+                onclick: (e: MouseEvent) => {
+                  if (stt === 'done' || stt === 'current') return;
+                  if ((e.shiftKey || stt === 'locked' || c.research.current) && ctx.services.economy.queueResearch) queue(t);
+                  else if (stt === 'available') start(t);
+                },
+              },
               h('span', { class: 'ig-tech-icon' }, t.icon),
               h('span', { class: 'ig-tech-name' }, t.name),
               h('span', { class: 'ig-tech-cost' }, stt === 'done' ? '✓' : stt === 'current' ? '⏳' : `${formatNumber(t.cost)} pkt`),
@@ -147,7 +165,8 @@ export function renderResearch(root: HTMLElement, ctx: GameContext): () => void 
       opts.sort((a, b) => a - b).map((v) => ({ value: v, label: v ? `${formatMoney(v)}/mies.` : 'brak' })),
       c.research.budget,
       (v) => {
-        c.research.budget = v;
+        if (ctx.services.economy.setResearchBudget) ctx.services.economy.setResearchBudget(c.id, v);
+        else c.research.budget = v;
       },
     );
     tooltip(sel, 'Miesięczny budżet na badania — zamieniany na punkty badań (oprócz laboratoriów)');

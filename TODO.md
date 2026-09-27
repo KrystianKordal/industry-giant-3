@@ -86,12 +86,12 @@ Zasady:
 - [ ] Przepustowość i korki (spowolnienie), statystyki tras
 
 **D. Renderowanie**
-- [ ] Teren z cieniowaniem, woda animowana, lasy, zabudowa miast
-- [ ] Budynki rysowane proceduralnie z ikonami produktów i animacją pracy (dym, kółka)
-- [ ] Pojazdy w ruchu, ładunek widoczny
-- [ ] Zoom semantyczny (blisko detale, daleko ikony i przepływy)
-- [ ] Nakładki: popyt, zanieczyszczenie, rentowność, przepustowość, złoża
-- [ ] Cykl dnia/nocy i pory roku (tint), opcjonalny tilt-shift
+- [x] Teren z cieniowaniem, woda animowana, lasy, zabudowa miast
+- [x] Budynki rysowane proceduralnie z ikonami produktów i animacją pracy (dym, kółka)
+- [x] Pojazdy w ruchu, ładunek widoczny
+- [x] Zoom semantyczny (blisko detale, daleko ikony i przepływy)
+- [x] Nakładki: popyt, zanieczyszczenie, rentowność, przepustowość, złoża
+- [x] Cykl dnia/nocy i pory roku (tint), opcjonalny tilt-shift
 
 **E. UI/UX**
 - [ ] Menu główne, nowa gra (seed, rozmiar, trudność, liczba rywali), ustawienia

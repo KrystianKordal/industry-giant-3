@@ -7,6 +7,8 @@
 import type { GameContext } from '../core/context';
 import type { GameState } from '../core/types';
 import { trafficLevel } from '../logistics/api';
+import { formatNumber } from '../core/format';
+import { select } from './components';
 import { h, setChildren } from './dom';
 import { tooltip } from './tooltip';
 import type { OverlayDef } from './types';
@@ -144,7 +146,46 @@ export const DEFAULT_OVERLAYS: OverlayDef[] = [
       return [Math.round(138 - t * 76), Math.round(106 + t * 94), Math.round(58 + t * 32), 190];
     },
   },
+  {
+    id: 'ownership',
+    name: 'Własność',
+    icon: '🏳️',
+    order: 70,
+    description: 'Budynki i infrastruktura według właściciela.',
+    minimapColor(st, i) {
+      const bid = st.map.building[i];
+      const owner = bid ? st.buildings[bid]?.owner : st.network.road[i] || st.network.rail[i] ? st.network.owner[i] : undefined;
+      if (owner === undefined) return null;
+      const c = st.companies[owner];
+      const [r, g, b] = hexToRgb(c?.color?.startsWith('#') ? c.color : '#9aa8b8');
+      return [r, g, b, 255];
+    },
+  },
 ];
+
+interface OverlayEntry {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+/** Overlays to offer: the render module's list (authoritative), else the UI registry. */
+export function overlayEntries(ctx: GameContext, ui: UiManager): OverlayEntry[] {
+  let list: OverlayEntry[] = [];
+  try {
+    list = ctx.renderer.listOverlays().map((o) => ({ id: o.id, name: o.name, icon: o.icon, description: o.description }));
+  } catch {
+    list = [];
+  }
+  if (list.length === 0) list = ui.overlays.map((o) => ({ id: o.id, name: o.name, icon: o.icon, description: o.description ?? '' }));
+  // extra overlays registered through ctx.ui.registerOverlay that render does not know
+  for (const o of ui.overlays) if (!DEFAULT_OVERLAYS.some((d) => d.id === o.id) && !list.some((x) => x.id === o.id)) list.push({ id: o.id, name: o.name, icon: o.icon, description: o.description ?? '' });
+  return list;
+}
+
+/** Base overlay id without the ':param' suffix ('demand:bread' → 'demand'). */
+export const overlayBase = (id: string | null): string | null => (id ? (id.split(':')[0] ?? id) : null);
 
 /** Deposit legend is generated from data (depends on the registry). */
 function depositLegend(ctx: GameContext): OverlayDef['legend'] {
@@ -167,14 +208,15 @@ export function installOverlays(ctx: GameContext, ui: UiManager): void {
         'div',
         { class: 'ig-overlay-list' },
         h('button', { class: `ig-overlay-btn${cur === null ? ' active' : ''}`, onclick: () => setOverlay(null) }, h('span', { class: 'ig-overlay-icon' }, '✖'), h('span', null, 'Brak')),
-        ui.overlays.map((o) => {
+        overlayEntries(ctx, ui).map((o) => {
+          const active = overlayBase(cur) === o.id;
           const b = h(
             'button',
-            { class: `ig-overlay-btn${cur === o.id ? ' active' : ''}`, onclick: () => setOverlay(cur === o.id ? null : o.id) },
+            { class: `ig-overlay-btn${active ? ' active' : ''}`, dataset: { id: `overlay-${o.id}` }, onclick: () => setOverlay(active ? null : o.id) },
             h('span', { class: 'ig-overlay-icon' }, o.icon),
             h('span', null, o.name),
           );
-          tooltip(b, `${o.name}${o.hotkey ? ` [${o.hotkey}]` : ''}\n${o.description ?? ''}`);
+          tooltip(b, `${o.name}\n${o.description ?? ''}`);
           return b;
         }),
       ),
@@ -182,6 +224,7 @@ export function installOverlays(ctx: GameContext, ui: UiManager): void {
   };
   const setOverlay = (id: string | null): void => {
     ctx.renderer.setOverlay(id);
+    legendSig = '';
     ctx.bus.emit('sfx', { id: 'click' });
     renderFly();
     renderLegend();
@@ -200,41 +243,93 @@ export function installOverlays(ctx: GameContext, ui: UiManager): void {
   const legend = h('div', { class: 'ig-legend' });
   legend.style.display = 'none';
   ui.root.append(legend);
+  let legendSig = '';
   const renderLegend = (): void => {
     const id = ctx.hasGame ? ctx.renderer.overlay : null;
-    const def = ui.overlayDef(id);
     if (!id) {
       legend.style.display = 'none';
+      legendSig = '';
       return;
     }
     legend.style.display = '';
-    const entries = def?.id === 'deposits' && !def.legend ? depositLegend(ctx) : def?.legend;
+    const base = overlayBase(id);
+    const def = ui.overlayDef(base);
+    let info: ReturnType<typeof ctx.renderer.overlayInfo> = null;
+    try {
+      info = ctx.renderer.overlayInfo(id);
+    } catch {
+      info = null;
+    }
+    const sig = JSON.stringify(info) + id;
+    if (sig === legendSig) return;
+    legendSig = sig;
+    const name = info?.name ?? def?.name ?? id;
+    const icon = info?.icon ?? def?.icon ?? '🗺️';
+    const desc = (info?.description ?? def?.description)?.replace(/\s*Użyj „demand:[^”]*”[^.]*\.?/, '');
+    const lg = info?.legend;
+    const fmtVal = (v: number): string => (Math.abs(v) >= 1000 ? formatNumber(v) : formatNumber(v, 1));
+    let body: HTMLElement | null = null;
+    if (lg && lg.kind === 'categories' && lg.categories?.length) {
+      body = h(
+        'div',
+        { class: 'ig-legend-items' },
+        lg.categories.map((e) => h('div', { class: 'ig-legend-item' }, h('span', { class: 'ig-legend-swatch', style: { background: e.color } }), `${e.icon ? `${e.icon} ` : ''}${e.label}`)),
+      );
+    } else if (lg && lg.stops.length) {
+      const grad = lg.stops.map((st2) => `${st2.color} ${Math.round(st2.t * 100)}%`).join(', ');
+      const range = lg.max > lg.min && (lg.min !== 0 || lg.max !== 1) ? ` (${fmtVal(lg.min)} – ${fmtVal(lg.max)}${lg.unit ? ` ${lg.unit}` : ''})` : '';
+      body = h(
+        'div',
+        { class: 'ig-legend-gradient' },
+        h('div', { class: 'ig-legend-bar', style: { background: `linear-gradient(90deg, ${grad})` } }),
+        h('div', { class: 'ig-legend-scale' }, h('span', null, lg.minLabel), h('span', null, lg.maxLabel)),
+        range ? h('div', { class: 'ig-legend-desc' }, `Zakres${range}`) : null,
+      );
+    } else if (def?.gradient) {
+      body = h(
+        'div',
+        { class: 'ig-legend-gradient' },
+        h('div', { class: 'ig-legend-bar', style: { background: `linear-gradient(90deg, ${def.gradient.stops.join(', ')})` } }),
+        h('div', { class: 'ig-legend-scale' }, h('span', null, def.gradient.min), h('span', null, def.gradient.max)),
+      );
+    } else {
+      const entries = def?.id === 'deposits' && !def.legend ? depositLegend(ctx) : def?.legend;
+      if (entries?.length)
+        body = h(
+          'div',
+          { class: 'ig-legend-items' },
+          entries.map((e) => h('div', { class: 'ig-legend-item' }, h('span', { class: 'ig-legend-swatch', style: { background: e.color } }), e.label)),
+        );
+    }
+    // demand: pick a single product
+    let productPick: HTMLElement | null = null;
+    if (base === 'demand' && ctx.hasGame) {
+      const cur = id.includes(':') ? id.slice(id.indexOf(':') + 1) : '';
+      const prods = ctx.data.productList().filter((p) => p.consumption && Object.values(p.consumption).some((v) => (v ?? 0) > 0) && ctx.data.eraIndex(p.era) <= ctx.data.eraIndex(ctx.state.time.eraId));
+      productPick = select(
+        [{ value: '', label: 'Wszystkie produkty' }, ...prods.map((p) => ({ value: p.id, label: `${p.icon} ${p.name}` }))],
+        cur,
+        (v) => setOverlay(v ? `demand:${v}` : 'demand'),
+        'ig-select-sm',
+      );
+    }
     setChildren(
       legend,
       h(
         'div',
         { class: 'ig-legend-head' },
-        h('span', { class: 'ig-legend-title' }, `${def?.icon ?? '🗺️'} ${def?.name ?? id}`),
+        h('span', { class: 'ig-legend-title' }, `${icon} ${name}`),
         h('button', { class: 'ig-legend-x', title: 'Wyłącz nakładkę [Shift+O]', onclick: () => setOverlay(null) }, '✕'),
       ),
-      def?.description ? h('div', { class: 'ig-legend-desc' }, def.description) : null,
-      def?.gradient
-        ? h(
-            'div',
-            { class: 'ig-legend-gradient' },
-            h('div', { class: 'ig-legend-bar', style: { background: `linear-gradient(90deg, ${def.gradient.stops.join(', ')})` } }),
-            h('div', { class: 'ig-legend-scale' }, h('span', null, def.gradient.min), h('span', null, def.gradient.max)),
-          )
-        : null,
-      entries?.length
-        ? h(
-            'div',
-            { class: 'ig-legend-items' },
-            entries.map((e) => h('div', { class: 'ig-legend-item' }, h('span', { class: 'ig-legend-swatch', style: { background: e.color } }), e.label)),
-          )
-        : null,
+      desc ? h('div', { class: 'ig-legend-desc' }, desc) : null,
+      productPick,
+      body,
+      lg?.note ? h('div', { class: 'ig-legend-desc' }, lg.note) : null,
     );
   };
+  setInterval(() => {
+    if (legend.style.display !== 'none') renderLegend();
+  }, 1000);
 
   ctx.bus.on('overlay:changed', () => {
     renderLegend();
@@ -263,9 +358,9 @@ export function installOverlays(ctx: GameContext, ui: UiManager): void {
   });
 
   const cycle = (dir: number): void => {
-    const list = ui.overlays.map((o) => o.id);
+    const list = overlayEntries(ctx, ui).map((o) => o.id);
     if (!list.length) return;
-    const cur = ctx.renderer.overlay;
+    const cur = overlayBase(ctx.renderer.overlay);
     const i = cur ? list.indexOf(cur) : -1;
     const next = i + dir;
     setOverlay(next < 0 || next >= list.length ? null : list[next]!);

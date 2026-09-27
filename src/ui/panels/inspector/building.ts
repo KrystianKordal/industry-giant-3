@@ -266,9 +266,13 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
       oninput: () => {
         const b = get();
         if (!b?.shop) return;
-        b.shop.priceFactor = Number(price.value);
-        setText(priceVal, `${Math.round(b.shop.priceFactor * 100)}%`);
-        ctx.bus.emit('building:changed', { buildingId: id });
+        const f = Number(price.value);
+        if (ctx.services.economy.setShopPrice) ctx.services.economy.setShopPrice(id, f);
+        else {
+          b.shop.priceFactor = f;
+          ctx.bus.emit('building:changed', { buildingId: id });
+        }
+        setText(priceVal, `${Math.round(f * 100)}%`);
       },
     });
     tooltip(price, 'Cena względem rynkowej: niższa = więcej klientów, wyższa = większa marża');
@@ -420,6 +424,12 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
     if (ups.length) p.body.append(section('Ulepszenia', upgrades.el));
     p.onUpdate = chain(p.onUpdate, upgrades.update);
 
+    const repairBtn = button('Napraw', () => {
+      const res = ctx.services.economy.repairBuilding?.(id);
+      if (!res) return;
+      if (res.ok) ctx.ui.toast({ level: 'success', icon: '🔧', title: 'Naprawiono budynek', text: formatMoney(res.cost) });
+      else ctx.ui.toast({ level: 'warning', icon: '🔧', title: 'Nie można naprawić', text: res.reason });
+    }, { small: true, icon: '🔧', title: 'Przywróć stan techniczny (koszt zależy od zużycia)' });
     const enableBtn = button('', () => {
       const b = get();
       if (b) setEnabled(ctx, b, !b.enabled);
@@ -442,6 +452,7 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
         { class: 'ig-insp-actions' },
         enableBtn,
         prio,
+        repairBtn,
         h('span', { class: 'ig-grow' }),
         button('Wyburz', async () => {
           const b = get();
@@ -462,6 +473,7 @@ export function renderBuildingInspector(p: PanelInstance, ctx: GameContext, id: 
       const b = get();
       if (!b) return;
       enableBtn.replaceChildren(b.enabled ? '⏸ Wyłącz' : '▶ Włącz');
+      repairBtn.style.display = ctx.services.economy.repairBuilding && (b.condition < 0.8 || b.status === 'damaged') ? '' : 'none';
     };
     p.onUpdate = chain(p.onUpdate, upd);
   } else if (b0.owner !== 0) {

@@ -6,7 +6,7 @@
 import type { GameContext } from '../core/context';
 import type { GameState } from '../core/types';
 import { h } from './dom';
-import { hexToRgb } from './overlays';
+import { hexToRgb, overlayBase } from './overlays';
 import { tooltip } from './tooltip';
 import type { UiManager } from './ui';
 
@@ -119,7 +119,7 @@ export function installMinimap(ctx: GameContext, ui: UiManager): void {
         }
     }
     // overlay tint
-    const ov = overlayMode ? ui.overlayDef(ctx.renderer.overlay) : undefined;
+    const ov = overlayMode ? ui.overlayDef(overlayBase(ctx.renderer.overlay)) : undefined;
     if (ov?.minimapColor) {
       for (let i = 0; i < n; i++) {
         let c: [number, number, number, number] | null = null;
