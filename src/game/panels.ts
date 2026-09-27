@@ -11,7 +11,7 @@ import { h, setChildren } from '../ui/dom';
 import type { PanelDef } from '../ui/types';
 import { isUnlocked, loadCampaign, nextScenarioId } from './campaign';
 import { currentScenario, updateObjectives } from './goals';
-import { milestoneList } from './milestones';
+import { milestoneList, monopolyStatus } from './milestones';
 import { formatProgress, objectiveRatio, type ObjectiveSpec } from './objectives';
 import { SCENARIOS, scenarioById, scenarioInfo, type ScenarioDef } from './scenarios';
 import { gameExt } from './tracking';
@@ -266,6 +266,57 @@ export const resultPanel: PanelDef = {
           ctx.sim.setPaused(false);
         }) : null,
         won && nextSc ? button(`Dalej: ${nextSc.name}`, () => startScenario(ctx, nextSc.id), { variant: 'primary', icon: '▶' }) : null,
+      ),
+    );
+  },
+};
+
+// ---------------------------------------------------------------- sandbox victory
+/** "Monopolista" — sandbox victory; the game goes on after closing. */
+export const sandboxVictoryPanel: PanelDef = {
+  id: 'sandboxVictory',
+  title: 'Zwycięstwo!',
+  icon: '👑',
+  width: 460,
+  refreshMs: 0,
+  create(p, ctx) {
+    const st = ctx.tryState();
+    const player = st?.companies[st.playerCompanyId];
+    const mono = st ? monopolyStatus(ctx, st) : null;
+    const days = st ? st.time.totalDays - gameExt(st).startDay : 0;
+    const acquired = st ? Object.values(st.companies).filter((c) => c.acquiredBy === st.playerCompanyId).length : 0;
+    setChildren(
+      p.body,
+      h('div', { class: 'ig-result won' }, h('div', { class: 'ig-result-icon' }, '👑'), h('div', { class: 'ig-result-title' }, 'Monopolista!')),
+      h(
+        'p',
+        null,
+        mono && mono.rivalsLeft === 0
+          ? 'Na rynku nie został żaden konkurent — Twoje imperium kontroluje cały przemysł.'
+          : `Kontrolujesz ${Math.round((mono?.share ?? 0) * 100)}% sprzedaży w sklepach. Konkurencja jest w odwrocie.`,
+      ),
+      player && st
+        ? section(
+            'Podsumowanie',
+            h('div', { class: 'ig-small' }, `Czas gry: ${Math.floor(days / 360)} l. ${Math.floor((days % 360) / 30)} mies. (${formatDate(st.time)})`),
+            h('div', { class: 'ig-small' }, `Gotówka: ${formatMoney(player.cash)}`),
+            h('div', { class: 'ig-small' }, `Wartość firmy: ${formatMoney(ctx.services.economy.companyValue(player.id))}`),
+            h('div', { class: 'ig-small' }, `Przejęte firmy: ${acquired}`),
+            h('div', { class: 'ig-small' }, `Kamienie milowe: ${Object.keys(st.goals.milestones).length}`),
+          )
+        : null,
+      h('p', { class: 'ig-small ig-muted' }, 'Możesz grać dalej: rozwijaj imperium, stawiaj projekty prestiżowe (Specjalne) i dochodź do kolejnych epok.'),
+      h(
+        'div',
+        { class: 'ig-row ig-row-end', style: { flexWrap: 'wrap' } },
+        button('Menu główne', () => {
+          p.close();
+          endGame(ctx);
+        }, { variant: 'ghost' }),
+        button('Graj dalej', () => {
+          p.close();
+          ctx.sim.setPaused(false);
+        }, { variant: 'primary', icon: '▶' }),
       ),
     );
   },

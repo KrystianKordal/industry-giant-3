@@ -17,6 +17,7 @@ import { cityPopulation } from '../../core/entities';
 import type { BuildingDef } from '../../data/defs';
 import type { RenderContext } from '../../render/types';
 import type { ToolDef, ToolStatus, ToolStatusLine } from '../types';
+import { computeSuitability, nearestSuitable, SUIT_GOOD, type Suitability } from './suitability';
 
 const T = TILE_SIZE;
 
@@ -49,6 +50,98 @@ export function createBuildTool(ctx: GameContext): ToolDef {
 
   const def = (): BuildingDef | undefined => ctx.data.buildings[typeId];
   const player = (): number => ctx.state.playerCompanyId;
+
+  // ---- suitability wash (valid build spots), cached per type/rotation, recomputed on map changes
+  let suit: Suitability | null = null;
+  let suitDirty = true;
+  let suitAt = 0;
+  let suitCanvas: HTMLCanvasElement | null = null;
+  let suitDrawn: Suitability | null = null;
+  let nearest: { key: string; spot: { x: number; y: number; dist: number } | null } | null = null;
+  const markDirty = (): void => {
+    suitDirty = true;
+  };
+  for (const ev of ['map:changed', 'network:changed', 'building:built', 'building:removed', 'building:changed', 'research:completed', 'era:changed', 'time:month'] as const)
+    ctx.bus.on(ev, markDirty);
+  ctx.bus.on('game:started', () => {
+    suit = null;
+    suitDrawn = null;
+    nearest = null;
+  });
+  const suitability = (): Suitability | null => {
+    if (!typeId || !ctx.hasGame || !def()) return null;
+    const now = performance.now();
+    const stale = !suit || suit.typeId !== typeId || suit.rotation !== rot || suit.width !== ctx.state.map.width;
+    if (stale || (suitDirty && now - suitAt > 600)) {
+      try {
+        suit = computeSuitability(ctx, player(), typeId, rot);
+      } catch (err) {
+        console.warn('[build] suitability failed', err);
+        suit = null;
+      }
+      suitDirty = false;
+      suitAt = now;
+      nearest = null;
+    }
+    return suit;
+  };
+  const nearestSpot = (): { x: number; y: number; dist: number } | null => {
+    const s = suitability();
+    if (!s || !hover) return null;
+    const k = `${s.typeId}:${s.rotation}:${suitAt}:${hover.tx}:${hover.ty}`;
+    if (!nearest || nearest.key !== k) nearest = { key: k, spot: nearestSuitable(s, hover.tx, hover.ty) };
+    return nearest.spot;
+  };
+  const drawSuitability = (rc: RenderContext): void => {
+    const s = suitability();
+    if (!s || typeof document === 'undefined') return;
+    if (suitDrawn !== s || !suitCanvas) {
+      suitCanvas ??= document.createElement('canvas');
+      suitCanvas.width = s.width;
+      suitCanvas.height = s.height;
+      const g2 = suitCanvas.getContext('2d');
+      if (!g2) return;
+      const img = g2.createImageData(s.width, s.height);
+      const px = img.data;
+      for (let i = 0; i < s.mask.length; i++) {
+        const v = s.mask[i]!;
+        const o = i * 4;
+        if (v === SUIT_GOOD) {
+          px[o] = 70;
+          px[o + 1] = 235;
+          px[o + 2] = 120;
+          px[o + 3] = 105;
+        } else if (v) {
+          px[o] = 120;
+          px[o + 1] = 215;
+          px[o + 2] = 140;
+          px[o + 3] = 62;
+        } else {
+          px[o + 3] = 58; // dim invalid areas
+        }
+      }
+      g2.putImageData(img, 0, 0);
+      suitDrawn = s;
+    }
+    const g = rc.g;
+    const smooth = g.imageSmoothingEnabled;
+    g.imageSmoothingEnabled = false;
+    g.drawImage(suitCanvas, 0, 0, s.width * T, s.height * T);
+    g.imageSmoothingEnabled = smooth;
+  };
+  const jumpToSpot = (): boolean => {
+    const spot = nearestSpot();
+    if (!spot) {
+      ctx.ui.toast({ level: 'warning', icon: '🔍', title: 'Brak dobrych miejsc', text: suit?.blocked ?? 'Na mapie nie ma teraz miejsca spełniającego wymagania tego budynku.', durationMs: 2500 });
+      ctx.bus.emit('sfx', { id: 'error' });
+      return true;
+    }
+    hover = { tx: spot.x, ty: spot.y };
+    ctx.bus.emit('camera:focus', { x: spot.x + 0.5, y: spot.y + 0.5 });
+    ctx.bus.emit('sfx', { id: 'click' });
+    refresh(true);
+    return true;
+  };
 
   const refresh = (force = false): void => {
     const d = def();
@@ -116,6 +209,7 @@ export function createBuildTool(ctx: GameContext): ToolDef {
       refresh(true);
     },
     keyDown(e) {
+      if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) return jumpToSpot();
       if (e.key === 'r' || e.key === 'R') {
         rot = (((rot + (e.shiftKey ? 3 : 1)) % 4) as 0 | 1 | 2 | 3);
         refresh(true);
@@ -129,13 +223,15 @@ export function createBuildTool(ctx: GameContext): ToolDef {
     },
     drawPreview(rc) {
       const d = def();
-      if (!d || !hover) return;
+      if (!d) return;
+      drawSuitability(rc);
+      if (!hover) return;
       refresh();
       drawFootprint(rc, d, rot, hover.tx, hover.ty, check, analysis);
     },
     hint: () => {
       const d = def();
-      return `${d ? `${d.icon} ${d.name}` : 'Budowa'} — LPM: postaw · R: obróć · PPM/Esc: zakończ`;
+      return `${d ? `${d.icon} ${d.name}` : 'Budowa'} — zielone pola = dobre miejsca · LPM: postaw · R: obróć · F: najbliższe dobre miejsce · PPM/Esc: zakończ`;
     },
     status: () => {
       const d = def();
@@ -150,13 +246,23 @@ export function createBuildTool(ctx: GameContext): ToolDef {
       lines.push({ label: 'Utrzymanie', value: `${formatMoney(d.upkeep)}/mies.`, tone: 'dim' });
       if (d.workers) lines.push({ label: 'Pracownicy', value: String(d.workers), tone: 'dim' });
       if (analysis) lines.push(...analysis.lines);
+      const s = suitability();
+      if (s && !check?.ok) {
+        const spot = nearestSpot();
+        if (spot && spot.dist >= 1) {
+          const dx = spot.x - hover.tx;
+          const dy = spot.y - hover.ty;
+          const arrow = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][(Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8];
+          lines.push({ label: 'Najbliższe dobre miejsce', value: `${Math.round(spot.dist)} kafli ${arrow} · [F] pokaż`, tone: 'pos' });
+        } else if (!spot) lines.push({ label: 'Dobre miejsca', value: s.blocked ?? 'brak na mapie', tone: 'neg' });
+      }
       const st: ToolStatus = {
         icon: d.icon,
         title: d.name,
         ok: check?.ok,
         message: check ? (check.ok ? 'Kliknij, aby postawić' : check.reason ?? 'Nie można tu budować') : undefined,
         lines,
-        footer: `R: obróć (${['↑', '→', '↓', '←'][rot]}) · Esc: zakończ`,
+        footer: `R: obróć (${['↑', '→', '↓', '←'][rot]}) · F: dobre miejsce · Esc: zakończ`,
       };
       return st;
     },

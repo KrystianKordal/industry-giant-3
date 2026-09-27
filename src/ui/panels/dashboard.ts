@@ -520,6 +520,7 @@ function rivals(el: HTMLElement, ctx: GameContext): () => void {
     if (performance.now() - chartAt > 3000) {
       chartAt = performance.now();
       const series = Object.values(st.companies)
+        .filter((c) => !c.acquiredBy)
         .map((c) => ({ name: c.name, values: st.stats.monthly[`company.${c.id}.value`] ?? c.finances.valuationHistory, color: c.color }))
         .filter((x) => x.values.length > 1);
       chart.style.display = series.length ? '' : 'none';

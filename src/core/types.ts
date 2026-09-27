@@ -464,6 +464,14 @@ export interface Company {
   monthsInDebt: number;
   /** AI brain state; null for the player. */
   ai: AIState | null;
+  /**
+   * Set when the whole company was taken over (ai/takeover.ts buyCompany): all its
+   * buildings, vehicles, routes and network tiles now belong to this company. The
+   * record stays (history, stats) with `bankrupt = true`; UI lists skip it.
+   */
+  acquiredBy?: CompanyId;
+  /** totalDays of the takeover. */
+  acquiredDay?: number;
 }
 
 export interface Loan {
@@ -502,6 +510,7 @@ export type FinanceCategory =
   | 'research'
   | 'interest'
   | 'loanRepayment' // principal repaid (not an operating expense)
+  | 'acquisition' // whole-company takeovers: price paid, cash taken over (not an operating flow)
   | 'taxes'
   | 'emissionTax'
   | 'fines'
@@ -509,7 +518,7 @@ export type FinanceCategory =
   | 'otherExpense';
 
 /** Categories excluded from operating profit (financing flows). */
-export const NON_OPERATING_CATEGORIES: readonly FinanceCategory[] = ['loanIn', 'loanRepayment'];
+export const NON_OPERATING_CATEGORIES: readonly FinanceCategory[] = ['loanIn', 'loanRepayment', 'acquisition'];
 
 export interface FinanceMonth {
   year: number;

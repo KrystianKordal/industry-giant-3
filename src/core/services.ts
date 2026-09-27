@@ -186,6 +186,10 @@ export interface AiService {
   buildingPrice(buyerId: CompanyId, buildingId: BuildingId): number | null;
   /** Buy a rival's building (takeover). Pays seller, transfers ownership, emits building:changed. */
   buyBuilding(buyerId: CompanyId, buildingId: BuildingId): ActionResult;
+  /** Hostile-takeover price of a whole rival company (null = not possible). Optional. */
+  companyPrice?(buyerId: CompanyId, targetId: CompanyId): number | null;
+  /** Take over a whole rival company: pays the price, transfers all assets, marks it `acquiredBy`. Optional. */
+  buyCompany?(buyerId: CompanyId, targetId: CompanyId): ActionResult;
 }
 
 export interface Services {

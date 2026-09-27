@@ -36,8 +36,8 @@ export function checkPlacement(ctx: GameContext, companyId: CompanyId, typeId: s
       : `Wymaga technologii: ${ctx.data.techs[def.requiresTech ?? '']?.name ?? def.requiresTech}`;
     return { ok: false, reason, cost: def.cost };
   }
-  if (def.category === 'hq' && companyId && Object.values(state.buildings).some((b) => b.owner === companyId && b.typeId === typeId))
-    return { ok: false, reason: 'Firma ma już siedzibę', cost: def.cost };
+  if ((def.category === 'hq' || def.unique) && companyId && Object.values(state.buildings).some((b) => b.owner === companyId && b.typeId === typeId))
+    return { ok: false, reason: def.prestige ? 'Firma ma już ten projekt prestiżowy' : 'Firma ma już siedzibę', cost: def.cost };
   const chk = coreCheckPlacement(state, ctx.data, companyId, typeId, x, y, rot);
   if (!chk.ok) return chk;
   if (companyId) {
@@ -73,7 +73,7 @@ function build(ctx: GameContext, companyId: CompanyId, typeId: string, x: number
     if (isFarm && map.terrain[i] === Terrain.Grass) map.terrain[i] = Terrain.Farmland;
     if (!isForestry) map.forest[i] = 0;
   });
-  if (def.category === 'hq' && company) company.hq = { x: b.x, y: b.y };
+  if (def.category === 'hq' && !def.prestige && company) company.hq = { x: b.x, y: b.y };
   if (chk.cost > 0) addMoney(ctx, companyId, -chk.cost, 'construction');
   ctx.bus.emit('building:built', { buildingId: b.id });
   ctx.bus.emit('map:changed', { x: b.x, y: b.y, w: b.w, h: b.h });
@@ -110,7 +110,7 @@ function demolish(ctx: GameContext, buildingId: BuildingId): ActionResult {
   removeBuilding(state, buildingId);
   if (b.owner && refund > 0) addMoney(ctx, b.owner, refund, 'assetSale');
   const company = state.companies[b.owner];
-  if (def?.category === 'hq' && company) company.hq = null;
+  if (def?.category === 'hq' && !def.prestige && company) company.hq = null;
   ctx.bus.emit('building:removed', { buildingId, typeId: b.typeId, owner: b.owner, x: b.x, y: b.y, w: b.w, h: b.h });
   ctx.bus.emit('map:changed', { x: b.x, y: b.y, w: b.w, h: b.h });
   ctx.bus.emit('sfx', { id: 'demolish', x: b.x, y: b.y });

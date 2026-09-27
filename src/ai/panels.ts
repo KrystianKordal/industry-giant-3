@@ -6,11 +6,13 @@
 import type { GameContext } from '../core/context';
 import { formatMoney } from '../core/format';
 import type { Building, BuildingId, Company } from '../core/types';
-import { button, section, statRow } from '../ui/components';
+import { button, confirmDialog, section, statRow } from '../ui/components';
 import { h, setChildren } from '../ui/dom';
 import type { PanelDef } from '../ui/types';
 import { aiSummary } from './competitor';
 import { PERSONALITIES } from './profiles';
+import { MONOPOLY_SHARE, monopolyStatus } from '../game/milestones';
+import { buyCompany, companyTakeoverQuote } from './takeover';
 
 const DIFF_LABEL = { easy: 'łatwy', normal: 'normalny', hard: 'trudny' } as const;
 
@@ -85,12 +87,31 @@ export const rivalsPanel: PanelDef = {
     p.onUpdate = () => {
       const state = ctx.tryState();
       if (!state) return;
-      const rivals = Object.values(state.companies).filter((c) => !c.isPlayer);
+      const all = Object.values(state.companies).filter((c) => !c.isPlayer);
+      const rivals = all.filter((c) => !c.acquiredBy);
+      const acquired = all.filter((c) => c.acquiredBy);
+      const player = state.companies[state.playerCompanyId]!;
+      const acquiredNote = acquired.length
+        ? h(
+            'div',
+            { class: 'ig-small ig-muted', style: { marginTop: '6px' } },
+            `Przejęte firmy: ${acquired.map((c) => `${c.logo} ${c.name}${c.acquiredBy !== player.id ? ` (przez ${state.companies[c.acquiredBy!]?.name ?? '?'})` : ''}`).join(', ')}`,
+          )
+        : null;
+      const mono = monopolyStatus(ctx, state);
+      const goal = all.length
+        ? h(
+            'div',
+            { class: 'ig-small', style: { marginBottom: '8px' } },
+            state.goals.milestones.monopolist !== undefined
+              ? '👑 Cel „Monopolista” osiągnięty.'
+              : `👑 Cel „Monopolista”: przejmij wszystkich rywali (zostało ${mono.rivalsLeft}/${mono.rivalsTotal}) albo zdobądź ${Math.round(MONOPOLY_SHARE * 100)}% sprzedaży (masz ${Math.round(mono.share * 100)}%).`,
+          )
+        : null;
       if (!rivals.length) {
-        setChildren(p.body, h('div', { class: 'ig-muted' }, 'Brak rywali w tej grze.'));
+        setChildren(p.body, goal, h('div', { class: 'ig-muted' }, all.length ? 'Wszyscy rywale zostali przejęci — rynek należy do Ciebie!' : 'Brak rywali w tej grze.'), acquiredNote);
         return;
       }
-      const player = state.companies[state.playerCompanyId]!;
       const row = (c: Company): HTMLElement => {
         const s = aiSummary(ctx, c);
         const pers = c.ai ? PERSONALITIES[c.ai.personality] : null;
@@ -103,6 +124,45 @@ export const rivalsPanel: PanelDef = {
           statRow('Budynki / pojazdy', `${s.buildings} / ${s.vehicles}`).el,
           statRow('Specjalizacja', s.focus.join(', ') || '—').el,
         );
+        const q = companyTakeoverQuote(ctx, player.id, c.id);
+        if (q) {
+          const canPay = player.cash >= q.price;
+          body.append(
+            h(
+              'div',
+              { class: 'ig-row', style: { marginTop: '4px', alignItems: 'center' } },
+              h(
+                'span',
+                { class: 'ig-grow ig-small', 'data-tip': `Wycena ${formatMoney(q.base)} × premia ${q.premium.toFixed(2)}. Gotówka (${formatMoney(q.cash, true)}) i kredyty (${formatMoney(q.debt, true)}) rywala przechodzą na Ciebie.` },
+                q.blocked ? h('span', { class: 'ig-muted' }, `Wrogie przejęcie: ${q.blocked}`) : `Wrogie przejęcie: ${formatMoney(q.price, true)}`,
+              ),
+              q.blocked
+                ? null
+                : button(
+                    'Przejmij firmę',
+                    async () => {
+                      const ans = await confirmDialog(
+                        ctx.ui.root ?? document.body,
+                        `Przejąć ${c.name}?`,
+                        `Zapłacisz ${formatMoney(q.price)}. Przejmiesz ${q.buildings} budynków, ${q.vehicles} pojazdów, ${q.routes} tras, gotówkę ${formatMoney(q.cash)} i kredyty ${formatMoney(q.debt)}. Rywal zniknie z rynku.`,
+                        [
+                          { id: 'no', label: 'Anuluj', variant: 'ghost' },
+                          { id: 'yes', label: 'Przejmij', variant: 'primary' },
+                        ],
+                      );
+                      if (ans !== 'yes') return;
+                      const r = buyCompany(ctx, player.id, c.id);
+                      if (!r.ok) {
+                        ctx.ui.toast({ level: 'warning', icon: '🚫', title: 'Przejęcie nieudane', text: r.reason });
+                        ctx.bus.emit('sfx', { id: 'error' });
+                      }
+                      p.onUpdate?.();
+                    },
+                    { variant: 'primary', small: true, icon: '🦈', disabled: !canPay, title: canPay ? undefined : `Brakuje ${formatMoney(q.price - player.cash)}` },
+                  ),
+            ),
+          );
+        }
         if (expanded === c.id) {
           const list = Object.values(state.buildings).filter((b) => b.owner === c.id);
           body.append(
@@ -132,7 +192,7 @@ export const rivalsPanel: PanelDef = {
           }, { variant: 'ghost', small: true }),
         );
       };
-      setChildren(p.body, rivals.map(row));
+      setChildren(p.body, goal, ...rivals.map(row), acquiredNote);
     };
   },
 };

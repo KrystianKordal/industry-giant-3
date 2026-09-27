@@ -25,7 +25,7 @@ export const BUILD_CATEGORIES: BuildCategory[] = [
   { id: 'factory', label: 'Fabryki', icon: '🏭', categories: ['factory'], tooltip: 'Zakłady przetwórcze: z surowców powstają produkty' },
   { id: 'shop', label: 'Handel', icon: '🏪', categories: ['shop', 'export'], tooltip: 'Sklepy w miastach i centra eksportowe — tu zarabiasz' },
   { id: 'hub', label: 'Magazyny', icon: '📦', categories: ['warehouse', 'station'], tooltip: 'Magazyny, huby, zajezdnie, stacje i porty' },
-  { id: 'special', label: 'Specjalne', icon: '⚡', categories: ['research', 'recycling', 'energy', 'hq'], tooltip: 'Laboratoria, recykling, energia, siedziba' },
+  { id: 'special', label: 'Specjalne', icon: '⚡', categories: ['research', 'recycling', 'energy', 'hq'], tooltip: 'Laboratoria, recykling, energia, siedziba, projekty prestiżowe' },
 ];
 
 export function buildingsForCategory(ctx: GameContext, cat: BuildCategory): BuildingDef[] {

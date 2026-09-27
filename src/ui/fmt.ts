@@ -58,7 +58,7 @@ export const CATEGORY_LABEL: Record<BuildingCategory, string> = {
   recycling: 'Recykling',
   energy: 'Energia',
   export: 'Eksport',
-  hq: 'Siedziba',
+  hq: 'Siedziba i prestiż',
 };
 
 export const FINANCE_LABEL: Record<FinanceCategory, string> = {
@@ -81,6 +81,7 @@ export const FINANCE_LABEL: Record<FinanceCategory, string> = {
   research: 'Badania',
   interest: 'Odsetki',
   loanRepayment: 'Spłata kredytów',
+  acquisition: 'Przejęcia firm',
   taxes: 'Podatki',
   emissionTax: 'Podatek emisyjny',
   fines: 'Kary',

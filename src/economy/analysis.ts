@@ -337,7 +337,7 @@ const GROUPS: { label: string; categories: FinanceCategory[] }[] = [
   { label: 'Badania', categories: ['research'] },
   { label: 'Podatki, odsetki i kary', categories: ['taxes', 'interest', 'emissionTax', 'fines'] },
   { label: 'Inne koszty', categories: ['disaster', 'otherExpense'] },
-  { label: 'Kredyty (finansowanie)', categories: [...NON_OPERATING_CATEGORIES] },
+  { label: 'Finansowanie (kredyty, przejęcia)', categories: [...NON_OPERATING_CATEGORIES] },
 ];
 
 export const FINANCE_CATEGORY_NAMES: Record<FinanceCategory, string> = {
@@ -360,6 +360,7 @@ export const FINANCE_CATEGORY_NAMES: Record<FinanceCategory, string> = {
   research: 'Badania i rozwój',
   interest: 'Odsetki',
   loanRepayment: 'Spłata kredytów',
+  acquisition: 'Przejęcia firm',
   taxes: 'Podatek dochodowy',
   emissionTax: 'Opłata emisyjna',
   fines: 'Kary',

@@ -5,6 +5,7 @@
  *   const c = h('canvas'); lineChart(c, [{ name: 'Gotówka', values, color: '#e8b04a' }], { height: 160 });
  */
 
+import { axisTicks } from './analytics';
 import { h } from './dom';
 import { hideTooltip, tooltip } from './tooltip';
 
@@ -102,9 +103,9 @@ export function lineChart(canvas: HTMLCanvasElement, series: Series[], o: LineCh
   const padB = o.labels ? 20 : 8;
   const n = Math.max(0, ...series.map((s) => s.values.length));
   const all = series.flatMap((s) => [...s.values]);
-  let min = all.length ? Math.min(...all, 0) : 0;
-  let max = all.length ? Math.max(...all) : 1;
-  if (min === max) max = min + 1;
+  const axis = axisTicks(all.length ? Math.min(...all, 0) : 0, all.length ? Math.max(...all) : 0);
+  const min = axis.min;
+  const max = axis.max;
   const fmt = o.yFormat ?? ((v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0)));
   const X = (i: number): number => padL + (n > 1 ? (i / (n - 1)) * (w - padL - padR) : 0);
   const Y = (v: number): number => padT + (1 - (v - min) / (max - min)) * (hgt - padT - padB);
@@ -113,13 +114,15 @@ export function lineChart(canvas: HTMLCanvasElement, series: Series[], o: LineCh
   g.strokeStyle = 'rgba(255,255,255,0.08)';
   g.textAlign = 'right';
   g.textBaseline = 'middle';
-  for (let k = 0; k <= 4; k++) {
-    const v = min + ((max - min) * k) / 4;
+  let prevLabel = '';
+  for (const v of axis.ticks) {
     g.beginPath();
     g.moveTo(padL, Y(v));
     g.lineTo(w - padR, Y(v));
     g.stroke();
-    g.fillText(fmt(v), padL - 4, Y(v));
+    const label = fmt(v);
+    if (label !== prevLabel) g.fillText(label, padL - 4, Y(v)); // formatter rounding (e.g. "1,2 mln") must not repeat
+    prevLabel = label;
   }
   if (o.labels && n > 1) {
     g.textAlign = 'center';

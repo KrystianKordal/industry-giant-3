@@ -49,6 +49,7 @@ a w konsoli przeglądarki dostępny jest `window.ig3` (kontekst gry).
 | Esc | anuluj narzędzie → zamknij okno → menu gry (pauza) |
 | B | menu budowy |
 | R / T | drogi / tory (w narzędziu budowy R = obrót budynku) |
+| F | (w narzędziu budowy) skok kamery do najbliższego dobrego miejsca pod wybrany budynek |
 | L | nowa trasa (klikaj przystanki, Enter = utwórz) |
 | K | auto-połączenie (producent → odbiorca: droga + trasa + pojazd) |
 | X | rozbiórka |
@@ -71,8 +72,11 @@ a w konsoli przeglądarki dostępny jest `window.ig3` (kontekst gry).
 Najłatwiej zacząć od kampanii: **Kampania → 1. Chleb powszedni** prowadzi krok po kroku.
 W trybie swobodnym:
 
-1. **Farma zboża** — `🌾 Surowce` → „Farma zboża”. Postaw ją na żyznej równinie blisko miasta
-   (karta przy kursorze pokazuje koszt, żyzność gleby i najbliższe miasto).
+1. **Farma zboża** — `🌾 Surowce` → „Farma zboża”. Postaw ją na żyznej równinie blisko miasta.
+   Po wybraniu budynku mapa podświetla na zielono miejsca, w których można go postawić
+   (jaśniejsza zieleń = lepsza gleba / bogatsze złoże), a resztę lekko przyciemnia; klawisz **F**
+   przenosi kamerę do najbliższego dobrego miejsca. Karta przy kursorze pokazuje koszt, żyzność gleby
+   i najbliższe miasto.
 2. **Młyn** i **piekarnia** — `🏭 Fabryki`. Stawiaj je między farmą a miastem: krótsze trasy = niższe koszty.
 3. **Sklep spożywczy** — `🏪 Handel`, w mieście lub tuż przy nim. Karta pokaże popyt na towary i liczbę klientów w zasięgu.
 4. **Połącz budynki** — narzędzie `🔗 Auto-połącz` [K]: kliknij producenta, potem odbiorcę
@@ -98,8 +102,19 @@ W trybie swobodnym:
 - **Ekonomia**: ceny z podaży i popytu, eksport, P&L, kredyty, wycena firmy, podatki, bankructwo.
 - **Badania** — drzewo 37 technologii z kolejką, odblokowania budynków/pojazdów/produktów, bonusy wydajności.
 - **Ekologia** — emisje, zanieczyszczenie mapy, eko-ocena, reputacja, podatek emisyjny, recykling, zielona energia.
-- **Konkurencja AI** o różnych osobowościach i trzech poziomach trudności; przejmowanie budynków rywali.
+- **Konkurencja AI** o różnych osobowościach i trzech poziomach trudności; przejmowanie pojedynczych
+  budynków rywali oraz **wrogie przejęcie całej firmy** (panel 🏢 Rywale → „Przejmij firmę”): cena =
+  wycena rywala × premia ok. 1,5 (1,2–2,05; zależna od reputacji, osobowości i tego, czy rywal jest wart więcej
+  od Ciebie), dostępne rok po założeniu firmy; przejmujesz wszystkie budynki, pojazdy, trasy, drogi/tory,
+  gotówkę i kredyty rywala, a on znika z rynku.
+- **Cel gry swobodnej „Monopolista”** 👑 — przejmij (lub doprowadź do bankructwa) wszystkich rywali albo
+  zdobądź 60% sprzedaży w sklepach (po 2 latach gry). Pojawia się ekran zwycięstwa, a gra toczy się dalej.
+- **Projekty prestiżowe** (Specjalne, po jednym na firmę) — drogie, późne inwestycje na nadwyżki gotówki:
+  🗽 Pomnik przemysłu (+8 reputacji), 🎓 Uniwersytet techniczny (2000 pkt badań/mies., +6 reputacji),
+  🏙️ Wieżowiec korporacyjny (+12 reputacji, +300 pkt badań).
 - **Zdarzenia**: pogoda, susze, powodzie, sztormy, trzęsienia ziemi, strajki, boom/recesja, dotacje.
+  Okres ochronny na starcie gry — brak niszczących katastrof przez 24/12/6 miesięcy (łatwy/normalny/trudny);
+  na poziomie łatwym i normalnym katastrofy są o ok. 35–50% rzadsze niż na trudnym, susza trwa co najmniej 20 dni.
 - **Interfejs**: panel CEO z wykresami, widok łańcuchów, inspektory z wyjaśnieniem statusu,
   8 nakładek (popyt, zanieczyszczenie, żyzność, wartość gruntu, przepustowość, rentowność, złoża, własność),
   minimapa, doradca, powiadomienia z „Pokaż”, encyklopedia, blueprinty (zapis i wklejanie układów).
@@ -116,7 +131,8 @@ W trybie swobodnym:
 - Grafika 2D „z góry” (bez 3D), brak trybu wieloosobowego.
 - Balans ekonomii jest wstępny — szczególnie tempo badań bez budżetu R&D i opłacalność kolei na krótkich
   dystansach mogą wymagać dopracowania.
-- Nazwy tras między stacjami są generyczne („Stacja kolejowa → Stacja kolejowa”) — można je zmienić w oknie trasy.
+- Firmy AI nie przejmują się nawzajem ani nie próbują przejąć firmy gracza; projekty prestiżowe buduje tylko gracz.
+- Brak prawdziwej giełdy (obrotu akcjami) — zastępuje ją wycena spółek i wrogie przejęcia.
 - Zapisy są trzymane w localStorage przeglądarki — wyczyszczenie danych strony usuwa zapisy
   (użyj eksportu do pliku, aby zachować kopię).
 - Dźwięk startuje dopiero po pierwszym kliknięciu lub naciśnięciu klawisza (polityka autoodtwarzania przeglądarek).

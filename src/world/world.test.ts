@@ -8,7 +8,7 @@ import { Dir, Terrain, TileFlag, type MapPreset, type NewGameOptions } from '../
 import { registry } from '../data/registry';
 import { cityCountFor, updateCityMonthly } from './cities';
 import { ChangeSet } from './changes';
-import { rollWorldEvent } from './events';
+import { DESTRUCTIVE_KINDS, DROUGHT_MIN_DAYS, GRACE_DAYS, rollWorldEvent } from './events';
 import { essentialDeposits, FAIR_RADIUS } from './fairness';
 import { generateMap } from './mapgen';
 import { computeLandmasses, isWaterTerrain } from './mapinfo';
@@ -217,6 +217,37 @@ describe('weather & events', () => {
     let damaged = 0;
     for (const f of ctx.state.map.flags) if (f & TileFlag.Damaged) damaged++;
     expect(damaged).toBe(0);
+  });
+});
+
+describe('disaster pacing', () => {
+  const destructive = (s: GameContext['state']) =>
+    [...s.events.history, ...s.events.active].filter((e) => (DESTRUCTIVE_KINDS as readonly string[]).includes(e.kind));
+
+  it('no destructive disasters during the grace period (normal 12 / easy 24 / hard 6 months)', () => {
+    for (const difficulty of ['easy', 'normal', 'hard'] as const) {
+      for (const seed of [1, 2, 3]) {
+        const ctx = game({ seed, difficulty, mapWidth: 96, mapHeight: 96 });
+        ctx.sim.advanceDays(GRACE_DAYS[difficulty] - 1);
+        expect(destructive(ctx.state)).toEqual([]);
+      }
+    }
+  });
+
+  it('droughts last at least DROUGHT_MIN_DAYS and destructive events are rarer on normal than hard', () => {
+    let normal = 0;
+    let hard = 0;
+    for (const seed of [5, 6]) {
+      const n = game({ seed, difficulty: 'normal', mapWidth: 96, mapHeight: 96 });
+      n.sim.advanceDays(360 * 6);
+      const h = game({ seed, difficulty: 'hard', mapWidth: 96, mapHeight: 96 });
+      h.sim.advanceDays(360 * 6);
+      normal += destructive(n.state).length;
+      hard += destructive(h.state).length;
+      for (const st of [n.state, h.state])
+        for (const e of st.events.history) if (e.kind === 'drought') expect(e.endDay - e.startDay).toBeGreaterThanOrEqual(DROUGHT_MIN_DAYS);
+    }
+    expect(normal).toBeLessThan(hard);
   });
 });
 

@@ -82,7 +82,7 @@ export function aiSystem(state: GameState, _dt: number, ctx: GameContext): void 
   let thinks = 0;
   for (const c of Object.values(state.companies)) {
     const ai = c.ai;
-    if (!ai || c.isPlayer) continue;
+    if (!ai || c.isPlayer || c.acquiredBy) continue;
     if (ai.nextThinkDay > today) continue;
     if (thinks++ >= AI_MAX_THINKS_PER_DAY) break; // the rest thinks tomorrow
     const pers = PERSONALITIES[ai.personality] ?? PERSONALITIES.balanced;
@@ -106,7 +106,7 @@ export function init(ctx: GameContext): void {
   ctx.bus.on('company:bankrupt', ({ companyId }) => {
     const st = ctx.tryState();
     const c = st?.companies[companyId];
-    if (!c || c.isPlayer || !c.ai) return;
+    if (!c || c.isPlayer || !c.ai || c.acquiredBy) return;
     c.bankrupt = true;
     try {
       liquidate(ctx, c);

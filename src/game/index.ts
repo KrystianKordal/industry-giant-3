@@ -19,7 +19,7 @@ import { NewGameStepOrder } from '../core/state';
 import { advisorSystem, currentHint, onEraChanged, resetAdvisor } from './advisor';
 import { goalsSystem, loseScenario, scenarioStep } from './goals';
 import { checkMilestones, eraMilestone } from './milestones';
-import { briefingPanel, campaignPanel, objectivesPanel, resultPanel, tutorialPanel } from './panels';
+import { briefingPanel, campaignPanel, objectivesPanel, resultPanel, sandboxVictoryPanel, tutorialPanel } from './panels';
 import { SCENARIOS, scenarioInfo } from './scenarios';
 import { gameExt, installTracking } from './tracking';
 import { checkTutorial, clearHighlights, installTutorialLayer } from './tutorial';
@@ -114,6 +114,7 @@ export function init(ctx: GameContext): void {
   ctx.ui.registerPanel(briefingPanel);
   ctx.ui.registerPanel(objectivesPanel);
   ctx.ui.registerPanel(resultPanel);
+  ctx.ui.registerPanel(sandboxVictoryPanel);
   ctx.ui.registerPanel(tutorialPanel);
   installTutorialLayer(ctx);
 

@@ -138,6 +138,7 @@ export function closeEcologyMonth(state: GameState, ctx: GameContext): void {
     let shops = 0;
     let stocked = 0;
     let hq = false;
+    let prestige = 0;
     for (const id in state.buildings) {
       const b = state.buildings[id]!;
       if (b.owner !== c.id || b.constructionProgress < 1) continue;
@@ -146,11 +147,12 @@ export function closeEcologyMonth(state: GameState, ctx: GameContext): void {
         shops++;
         if (b.status === 'ok') stocked++;
       }
-      if (def?.category === 'hq') hq = true;
+      if (def?.category === 'hq' && !def.prestige) hq = true;
+      if (def?.prestige) prestige += def.prestige;
     }
     const supply = shops > 0 ? stocked / shops : 0.5;
     const repTarget = clamp(
-      45 + (15 * (c.ecoRating - 50)) / 50 + (avgQ - 0.5) * 40 + (supply - 0.5) * 20 - c.monthsInDebt * 6 + (hq ? 6 : 0),
+      45 + (15 * (c.ecoRating - 50)) / 50 + (avgQ - 0.5) * 40 + (supply - 0.5) * 20 - c.monthsInDebt * 6 + (hq ? 6 : 0) + prestige,
       0,
       100,
     );

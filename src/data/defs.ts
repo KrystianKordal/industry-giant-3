@@ -203,6 +203,10 @@ export interface BuildingDef {
   loadRate?: number;
   /** Eco-friendly building (green energy, recycling): improves the company eco rating. */
   green?: boolean;
+  /** At most one per company (prestige projects; HQ is always unique). */
+  unique?: boolean;
+  /** Prestige project: reputation points added to the company's reputation target while it stands. */
+  prestige?: number;
   /** Base draw color for the placeholder renderer. */
   color?: string;
   description?: string;

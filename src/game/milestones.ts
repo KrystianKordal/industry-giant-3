@@ -33,6 +33,38 @@ function value(ctx: GameContext, s: GameState, id: number): number {
   return s.companies[id]?.finances.valuation ?? 0;
 }
 
+/** Market share (by value, last closed month) needed for the "Monopolista" victory. */
+export const MONOPOLY_SHARE = 0.6;
+
+export interface MonopolyStatus {
+  rivalsTotal: number;
+  /** Rivals still on the market (not taken over, not bankrupt). */
+  rivalsLeft: number;
+  /** Player's share of all shop sales (by value) in the last closed month, 0..1. */
+  share: number;
+  achieved: boolean;
+}
+
+/** Sandbox victory "Monopolista": all rivals gone (taken over / bankrupt) or ≥ 60% market share. */
+export function monopolyStatus(_ctx: GameContext, s: GameState): MonopolyStatus {
+  const rivals = Object.values(s.companies).filter((x) => !x.isPlayer);
+  const rivalsLeft = rivals.filter((r) => !r.acquiredBy && !r.bankrupt).length;
+  const ext = gameExt(s);
+  let mine = 0;
+  let total = 0;
+  for (const [p, byCompany] of Object.entries(ext.shareLast)) {
+    const price = s.market.products[p]?.price ?? 1;
+    for (const [cid, qty] of Object.entries(byCompany)) {
+      const v = qty * price;
+      total += v;
+      if (Number(cid) === s.playerCompanyId) mine += v;
+    }
+  }
+  const share = total > 0 ? mine / total : 0;
+  const achieved = rivals.length > 0 && (rivalsLeft === 0 || (s.time.totalDays >= 720 && share >= MONOPOLY_SHARE && total >= 50_000));
+  return { rivalsTotal: rivals.length, rivalsLeft, share, achieved };
+}
+
 export const MILESTONES: MilestoneDef[] = [
   { id: 'first_building', icon: '🏗️', title: 'Pierwszy budynek', text: 'Postawiłeś pierwszy budynek. Imperium zaczyna się od fundamentów!', check: (_c, s) => count(s.buildings, pid(s)) >= 1 },
   { id: 'first_vehicle', icon: '🚚', title: 'Pierwszy pojazd', text: 'Twoja flota wyjechała w trasę.', check: (_c, s) => count(s.vehicles, pid(s)) >= 1 },
@@ -87,6 +119,13 @@ export const MILESTONES: MilestoneDef[] = [
       return rivals.every((r) => value(c, s, r.id) < pv);
     },
   },
+  {
+    id: 'monopolist',
+    icon: '👑',
+    title: 'Monopolista',
+    text: `Wszyscy rywale zniknęli z rynku (przejęci lub zbankrutowani) albo kontrolujesz ponad ${Math.round(MONOPOLY_SHARE * 100)}% sprzedaży w sklepach. Wygrywasz grę swobodną!`,
+    check: (c, s) => monopolyStatus(c, s).achieved,
+  },
 ];
 
 function achieve(ctx: GameContext, s: GameState, id: string, icon: string, title: string, text: string): void {
@@ -107,7 +146,14 @@ export function checkMilestones(ctx: GameContext, s: GameState): void {
     } catch {
       ok = false;
     }
-    if (ok) achieve(ctx, s, m.id, m.icon, m.title, m.text);
+    if (!ok) continue;
+    achieve(ctx, s, m.id, m.icon, m.title, m.text);
+    // sandbox victory: celebrate, but let the player continue
+    if (m.id === 'monopolist' && !s.goals.scenarioId && !ctx.headless) {
+      ctx.bus.emit('sfx', { id: 'victory' });
+      ctx.sim.setPaused(true);
+      ctx.ui.openPanel('sandboxVictory');
+    }
   }
 }
 

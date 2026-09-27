@@ -44,6 +44,24 @@ import { isWaterTerrain } from './mapinfo';
 const FREQ: Record<Difficulty, number> = { easy: 0.7, normal: 1, hard: 1.4 };
 const SEVERITY: Record<Difficulty, number> = { easy: 0.75, normal: 1, hard: 1.25 };
 
+/**
+ * Destructive disasters (damage, crop loss, casualties). None during the grace
+ * period at the start of a game (months: easy 24 / normal 12 / hard 6) and, on
+ * easy/normal, rarer than other events (roll kept with DESTRUCTIVE_FREQ,
+ * cooldowns stretched by 1 / DESTRUCTIVE_FREQ).
+ */
+export const DESTRUCTIVE_KINDS: readonly WorldEventKind[] = ['storm', 'flood', 'earthquake', 'fire', 'drought', 'epidemic'];
+export const GRACE_DAYS: Record<Difficulty, number> = { easy: 24 * 30, normal: 12 * 30, hard: 6 * 30 };
+export const DESTRUCTIVE_FREQ: Record<Difficulty, number> = { easy: 0.5, normal: 0.55, hard: 1 };
+/** A drought lasts at least this many days (no "Susza" + "Koniec: Susza" a few days apart). */
+export const DROUGHT_MIN_DAYS = 20;
+
+const isDestructive = (kind: WorldEventKind): boolean => DESTRUCTIVE_KINDS.includes(kind);
+/** True while destructive disasters are suppressed (start of the game). */
+export function inGracePeriod(state: GameState): boolean {
+  return state.time.totalDays < (GRACE_DAYS[state.settings.difficulty] ?? GRACE_DAYS.normal);
+}
+
 const COOLDOWN: Partial<Record<WorldEventKind, number>> = {
   storm: 60,
   flood: 180,
@@ -624,7 +642,8 @@ function refreshAffectedDemand(state: GameState, ctx: GameContext, ev: WorldEven
 /** Register an already-created event: push to active, cooldown, notify, events. */
 export function startEvent(state: GameState, ctx: GameContext, ev: WorldEvent): void {
   state.events.active.push(ev);
-  const cd = COOLDOWN[ev.kind] ?? 90;
+  let cd = COOLDOWN[ev.kind] ?? 90;
+  if (isDestructive(ev.kind)) cd = Math.round(cd / (DESTRUCTIVE_FREQ[state.settings.difficulty] ?? 1));
   state.events.cooldowns[ev.kind] = state.time.totalDays + cd;
   refreshAffectedDemand(state, ctx, ev);
   ctx.bus.emit('worldEvent:started', { eventId: ev.id });
@@ -654,12 +673,13 @@ function droughtEvents(state: GameState, ctx: GameContext): void {
   const active = state.events.active.filter((e) => e.kind === 'drought');
   for (const ev of active) {
     const worst = Math.max(...ev.regionIds.map((id) => regions[id]?.drought ?? 0));
-    if (worst < 0.45 || ev.endDay <= state.time.totalDays) {
+    const lasted = state.time.totalDays - ev.startDay;
+    if ((worst < 0.45 && lasted >= DROUGHT_MIN_DAYS) || ev.endDay <= state.time.totalDays) {
       ev.endDay = state.time.totalDays;
       endEvent(state, ctx, ev);
     }
   }
-  if (!state.settings.disasters) return;
+  if (!state.settings.disasters || inGracePeriod(state)) return;
   if ((state.events.cooldowns.drought ?? 0) > state.time.totalDays) return;
   const covered = new Set(state.events.active.filter((e) => e.kind === 'drought').flatMap((e) => e.regionIds));
   const ids: number[] = [];
@@ -711,10 +731,13 @@ export function rollWorldEvent(state: GameState, ctx: GameContext, forceKind?: W
     if (state.settings.politicalEvents) cats.push('political');
     if (!cats.length) return null;
     const cat = r.pick(cats);
-    pool = TEMPLATES.filter((t) => t.category === cat && (state.events.cooldowns[t.kind] ?? 0) <= today);
+    const grace = inGracePeriod(state);
+    pool = TEMPLATES.filter((t) => t.category === cat && (state.events.cooldowns[t.kind] ?? 0) <= today && !(grace && isDestructive(t.kind)));
   }
   const t = r.weighted(pool, (tp) => tp.weight(state, ctx));
   if (!t) return null;
+  // Destructive disasters are rarer on easy/normal (the roll is simply skipped).
+  if (!forceKind && isDestructive(t.kind) && !r.chance(DESTRUCTIVE_FREQ[state.settings.difficulty] ?? 1)) return null;
   const ev = t.create(state, ctx, r);
   if (!ev) return null;
   startEvent(state, ctx, ev);

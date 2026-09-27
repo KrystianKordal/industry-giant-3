@@ -22,6 +22,41 @@ export function loanPayment(amount: number, annualRate: number, months: number):
   return (amount * r) / (1 - Math.pow(1 + r, -months));
 }
 
+/**
+ * "Nice" y-axis ticks for a value range: round steps (1/2/2.5/5 × 10ⁿ, never
+ * below `minStep` — chart series are money/counts, so fractional ticks would
+ * format to duplicated labels like "1, 1, 0, 0"), covering [min, max].
+ * Flat data (min === max) gets a small range around the value (0 → 0..1).
+ */
+export function axisTicks(min: number, max: number, maxTicks = 5, minStep = 1): { min: number; max: number; ticks: number[] } {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    min = 0;
+    max = 1;
+  }
+  if (max < min) [min, max] = [max, min];
+  if (max === min) {
+    const pad = Math.max(minStep, Math.abs(min) * 0.1);
+    if (min >= 0 && min - pad < 0) max = min + pad;
+    else {
+      min -= pad;
+      max += pad;
+    }
+  }
+  const raw = (max - min) / Math.max(1, maxTicks - 1);
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  let step = mag;
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    step = m * mag;
+    if (step >= raw) break;
+  }
+  step = Math.max(minStep, step);
+  const lo = Math.floor(min / step + 1e-9) * step;
+  const hi = Math.ceil(max / step - 1e-9) * step;
+  const ticks: number[] = [];
+  for (let v = lo; v <= hi + step * 1e-6 && ticks.length < 50; v += step) ticks.push(Math.round(v / step) * step);
+  return { min: lo, max: hi > lo ? hi : lo + step, ticks: ticks.length > 1 ? ticks : [lo, lo + step] };
+}
+
 export interface CompanyRank {
   id: CompanyId;
   value: number;
@@ -44,6 +79,7 @@ export function companyRanking(st: GameState, valueOf: (id: CompanyId) => number
     counts.set(v.owner, c);
   }
   return Object.values(st.companies)
+    .filter((c) => !c.acquiredBy) // taken-over companies no longer exist on the market
     .map((c) => ({
       id: c.id,
       value: valueOf(c.id),

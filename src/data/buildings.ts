@@ -226,4 +226,9 @@ export const BUILDINGS: BuildingDef[] = [
 
   // ======================================================== headquarters
   def('headquarters', 'Siedziba firmy', '🏢', 'hq', 'industrial', [2, 2], 20000, 300, 10, { allowedTerrain: SHOP_TERRAIN, researchPoints: 15, capacity: 0, buildDays: 10, color: '#e8b04a', description: 'Jedna na firmę. +reputacja i +15 pkt badań/mies.' }),
+
+  // ======================================================== prestige projects (late-game money sinks, one per company)
+  def('industry_monument', 'Pomnik przemysłu', '🗽', 'hq', 'electric', [2, 2], 2_500_000, 15_000, 4, { allowedTerrain: SHOP_TERRAIN, unique: true, prestige: 8, capacity: 0, buildDays: 60, upgrades: [], color: '#c8b070', description: 'Projekt prestiżowy (jeden na firmę): monumentalny symbol Twojego imperium. +8 do reputacji.' }),
+  def('tech_university', 'Uniwersytet techniczny', '🎓', 'research', 'mass', [4, 4], 8_000_000, 60_000, 80, { researchPoints: 2000, power: -10, unique: true, prestige: 6, capacity: 0, buildDays: 90, color: '#7a6ab0', description: 'Projekt prestiżowy (jeden na firmę): 2000 pkt badań/mies. i +6 do reputacji.' }),
+  def('corporate_tower', 'Wieżowiec korporacyjny', '🏙️', 'hq', 'modern', [3, 3], 25_000_000, 150_000, 120, { allowedTerrain: SHOP_TERRAIN, researchPoints: 300, power: -8, unique: true, prestige: 12, capacity: 0, buildDays: 120, upgrades: [], color: '#5a7aa0', description: 'Projekt prestiżowy (jeden na firmę): siedziba światowego koncernu. +12 do reputacji, +300 pkt badań/mies.' }),
 ];

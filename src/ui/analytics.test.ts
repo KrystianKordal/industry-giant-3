@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Blueprint } from '../core/types';
 import { chainTiles, rotateBlueprint } from '../input/tools/blueprint';
-import { loanPayment } from './analytics';
+import { axisTicks, loanPayment } from './analytics';
 
 describe('ui helpers', () => {
   it('loanPayment: annuity and zero rate', () => {
@@ -9,6 +9,22 @@ describe('ui helpers', () => {
     const p = loanPayment(100000, 0.12, 12);
     expect(p).toBeGreaterThan(8800);
     expect(p).toBeLessThan(8900);
+  });
+
+  it('axisTicks: no duplicated labels for flat / zero / small integer data', () => {
+    const zero = axisTicks(0, 0);
+    expect(zero.ticks).toEqual([0, 1]);
+    const small = axisTicks(0, 3);
+    expect(new Set(small.ticks.map((v) => v.toFixed(0))).size).toBe(small.ticks.length);
+    expect(small.ticks[0]).toBe(0);
+    expect(small.ticks.at(-1)).toBeGreaterThanOrEqual(3);
+    const big = axisTicks(-1234, 987654);
+    expect(big.min).toBeLessThanOrEqual(-1234);
+    expect(big.max).toBeGreaterThanOrEqual(987654);
+    expect(big.ticks.length).toBeLessThanOrEqual(7);
+    const flat = axisTicks(5000, 5000);
+    expect(flat.min).toBeLessThan(5000);
+    expect(flat.max).toBeGreaterThan(5000);
   });
 
   it('rotateBlueprint keeps items inside the rotated box', () => {
